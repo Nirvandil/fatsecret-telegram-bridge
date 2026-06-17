@@ -1,3 +1,5 @@
+import threading
+
 from fsai.models import AliasRecord
 from fsai.store import Store
 
@@ -45,3 +47,28 @@ def test_log_roundtrip(tmp_path):
 def test_get_missing_log_returns_none(tmp_path):
     s = make_store(tmp_path)
     assert s.get_log(999) is None
+
+
+def test_store_usable_from_another_thread(tmp_path):
+    # Бот вызывает Store из воркер-потока (asyncio.to_thread); соединение
+    # создаётся в главном потоке — sqlite по умолчанию это запрещает.
+    s = make_store(tmp_path)
+    s.save_alias(AliasRecord("рис", "1", "2", 100.0, "Rice"))
+    result = {}
+
+    def worker():
+        try:
+            result["names"] = s.all_alias_names()
+            s.save_alias(AliasRecord("гречка", "3", "4", 100.0, "Buckwheat"))
+            result["log_id"] = s.add_log("t", ["e1"])
+        except Exception as e:  # noqa: BLE001
+            result["error"] = e
+
+    t = threading.Thread(target=worker)
+    t.start()
+    t.join()
+
+    assert "error" not in result, result.get("error")
+    assert result["names"] == ["рис"]
+    assert result["log_id"] is not None
+    assert s.get_alias("гречка") is not None
