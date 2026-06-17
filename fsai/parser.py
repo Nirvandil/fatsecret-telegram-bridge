@@ -1,9 +1,12 @@
 import json
+import logging
 import re
 from typing import Optional
 
 from fsai.llm.base import LLMProvider
 from fsai.models import ParsedItem
+
+logger = logging.getLogger(__name__)
 
 SYSTEM_PROMPT = (
     "Ты извлекаешь позиции питания из надиктованной фразы на русском. "
@@ -26,10 +29,14 @@ class Parser:
         self.provider = provider
 
     def parse(self, text: str, known_aliases: list[str]) -> list[ParsedItem]:
+        logger.info("Парсинг текста (%s симв., %s известных алиасов)",
+                    len(text), len(known_aliases))
         user = self._build_user_prompt(text, known_aliases)
         raw = self.provider.complete(SYSTEM_PROMPT, user)
+        logger.debug("LLM сырой ответ: %s", raw)
         data = self._extract_json(raw)
         if not data or not isinstance(data.get("items"), list):
+            logger.warning("LLM не вернул валидный JSON с items")
             return []
         items: list[ParsedItem] = []
         for it in data["items"]:
@@ -41,6 +48,8 @@ class Parser:
                 meal_hint=it.get("meal_hint") or None,
                 confidence=float(it.get("confidence", 1.0)),
             ))
+        logger.info("Распознано позиций: %s — %s",
+                    len(items), [(i.name, i.grams) for i in items])
         return items
 
     @staticmethod

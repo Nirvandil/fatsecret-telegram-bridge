@@ -1,9 +1,12 @@
+import logging
 from dataclasses import dataclass
 from typing import Union
 
 from fsai.models import (
     AliasRecord, FoodCandidate, ParsedItem, ResolvedItem, Serving,
 )
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -42,10 +45,14 @@ class Resolver:
 
     def resolve(self, item: ParsedItem, meal: str) -> Resolution:
         if item.grams is None:
+            logger.info("'%s': граммы не указаны → спрашиваем", item.name)
             return NeedsGrams(item)
         rec = self.store.get_alias(item.name)
         if rec is not None:
+            logger.info("'%s': найдено в таблице (food=%s) → %s г",
+                        item.name, rec.food_id, item.grams)
             return Resolved(self._to_resolved(item, rec, meal))
+        logger.info("'%s': нет в таблице → поиск в FatSecret", item.name)
         candidates = self.client.search_foods(item.name)
         return NeedsFood(item, candidates, meal)
 
@@ -54,6 +61,8 @@ class Resolver:
         servings = self.client.get_servings(food_id)
         gram_servings = [s for s in servings if s.grams]
         if not gram_servings:
+            logger.info("'%s' (food=%s): нет порции в граммах → спрашиваем серию",
+                        parsed.name, food_id)
             return NeedsServing(parsed, food_id, food_name, servings, meal)
         chosen = gram_servings[0]
         rec = AliasRecord(
@@ -61,6 +70,8 @@ class Resolver:
             grams_per_serving=chosen.grams, food_name=food_name,
         )
         self.store.save_alias(rec)
+        logger.info("'%s' → сохранён алиас: food=%s serving=%s (%s г/порция)",
+                    parsed.name, food_id, chosen.serving_id, chosen.grams)
         return Resolved(self._to_resolved(parsed, rec, meal))
 
     def confirm_serving(self, parsed: ParsedItem, food_id: str, food_name: str,

@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from dataclasses import dataclass
 from typing import Optional
 
@@ -8,6 +9,8 @@ from telegram.ext import (
 )
 
 from fsai.service import AutoLogged, NeedsInput, PendingPrompt
+
+logger = logging.getLogger(__name__)
 
 CB_SEP = "|"
 
@@ -95,7 +98,9 @@ class TelegramBot:
 
     def build_application(self) -> Application:
         app = Application.builder().token(self.config.telegram_token).build()
-        owner = filters.User(user_id=self.config.owner_chat_id)
+        # OWNER_CHAT_ID — id чата (личка: == user_id, группа/супергруппа: отрицательный).
+        # Фильтруем по чату, а не по пользователю-отправителю.
+        owner = filters.Chat(chat_id=self.config.owner_chat_id)
         app.add_handler(MessageHandler(
             filters.TEXT & ~filters.COMMAND & owner, self.on_text))
         app.add_handler(CallbackQueryHandler(self.on_callback))
@@ -105,14 +110,19 @@ class TelegramBot:
     async def on_text(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         chat_id = update.effective_chat.id
         text = update.message.text
+        logger.info("Сообщение от chat=%s: %r", chat_id, text)
 
-        awaiting = self._awaiting.get(chat_id)
-        if awaiting is not None:
-            await self._handle_awaited_number(update, chat_id, awaiting, text)
-            return
+        try:
+            awaiting = self._awaiting.get(chat_id)
+            if awaiting is not None:
+                await self._handle_awaited_number(update, chat_id, awaiting, text)
+                return
 
-        res = await asyncio.to_thread(self.service.process_text, text)
-        await self._render(update.message.reply_text, res, chat_id)
+            res = await asyncio.to_thread(self.service.process_text, text)
+            await self._render(update.message.reply_text, res, chat_id)
+        except Exception:
+            logger.exception("Ошибка обработки сообщения")
+            await update.message.reply_text("⚠️ Что-то пошло не так, см. логи.")
 
     async def _handle_awaited_number(self, update, chat_id, awaiting, text):
         try:
@@ -139,22 +149,28 @@ class TelegramBot:
         await query.answer()
         action, sid, idx, payload = unpack_cb(query.data)
         chat_id = query.message.chat_id
+        logger.info("Callback: action=%s idx=%s payload=%s (session=%s)",
+                    action, idx, payload, sid)
 
-        if action == "undo":
-            count = await asyncio.to_thread(self.service.undo, int(payload))
-            await query.edit_message_text(f"↩ Отменено записей: {count}")
-            return
-        if action == "food":
-            await asyncio.to_thread(self.service.choose_food, sid, idx, payload)
-            await query.edit_message_text("Принято.")
-            await self._finalize_and_render(
-                query.message.reply_text, sid, chat_id)
-            return
-        if action == "serv":
-            self._awaiting[chat_id] = ("serving_grams", sid, idx, payload)
-            await query.edit_message_text(
-                "Сколько грамм в одной такой порции? Пришли число.")
-            return
+        try:
+            if action == "undo":
+                count = await asyncio.to_thread(self.service.undo, int(payload))
+                await query.edit_message_text(f"↩ Отменено записей: {count}")
+                return
+            if action == "food":
+                await asyncio.to_thread(self.service.choose_food, sid, idx, payload)
+                await query.edit_message_text("Принято.")
+                await self._finalize_and_render(
+                    query.message.reply_text, sid, chat_id)
+                return
+            if action == "serv":
+                self._awaiting[chat_id] = ("serving_grams", sid, idx, payload)
+                await query.edit_message_text(
+                    "Сколько грамм в одной такой порции? Пришли число.")
+                return
+        except Exception:
+            logger.exception("Ошибка обработки колбэка")
+            await query.message.reply_text("⚠️ Что-то пошло не так, см. логи.")
 
     # --- рендеринг результата ---
     async def _render(self, reply, res, chat_id):

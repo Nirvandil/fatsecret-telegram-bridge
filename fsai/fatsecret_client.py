@@ -1,6 +1,8 @@
-from typing import Optional
+import logging
 
 from fsai.models import FoodCandidate, Serving
+
+logger = logging.getLogger(__name__)
 
 
 class FatSecretClient:
@@ -20,9 +22,10 @@ class FatSecretClient:
         )
 
     def search_foods(self, query: str, max_results: int = 5) -> list[FoodCandidate]:
+        logger.info("FatSecret foods.search %r (max=%s)", query, max_results)
         foods = self._fs.foods.search_v1(
             search_expression=query, max_results=max_results)
-        return [
+        out = [
             FoodCandidate(
                 food_id=str(f.food_id),
                 food_name=f.food_name,
@@ -30,10 +33,14 @@ class FatSecretClient:
             )
             for f in (foods or [])
         ]
+        logger.info("  → %s кандидатов", len(out))
+        return out
 
     def get_servings(self, food_id: str) -> list[Serving]:
+        logger.info("FatSecret food.get %s", food_id)
         food = self._fs.foods.get_v2(food_id)
         if food is None or food.servings is None:
+            logger.info("  → нет порций")
             return []
         out: list[Serving] = []
         for s in (food.servings.serving or []):
@@ -46,6 +53,8 @@ class FatSecretClient:
                 grams=grams,
                 metric_unit=unit,
             ))
+        logger.info("  → %s порций (%s в граммах)",
+                    len(out), sum(1 for s in out if s.grams))
         return out
 
     def create_entry(self, food_id: str, food_name: str, serving_id: str,
@@ -65,11 +74,15 @@ class FatSecretClient:
         }
         if date is not None:
             params["date"] = self._fs.unix_time_v2(date)
+        logger.info("FatSecret food_entry.create food=%s serving=%s units=%s meal=%s",
+                    food_id, serving_id, number_of_units, meal)
         payload = self._fs._call(params, method="POST")
         fe = payload.get("food_entry_id") if isinstance(payload, dict) else None
-        if isinstance(fe, dict):
-            return str(fe.get("value", ""))
-        return str(fe) if fe else ""
+        entry_id = str(fe.get("value", "")) if isinstance(fe, dict) else (
+            str(fe) if fe else "")
+        logger.info("  → entry_id=%s", entry_id or "(пусто!)")
+        return entry_id
 
     def delete_entry(self, entry_id: str) -> None:
+        logger.info("FatSecret food_entry.delete %s", entry_id)
         self._fs.diary.entry_delete_v1(food_entry_id=entry_id)

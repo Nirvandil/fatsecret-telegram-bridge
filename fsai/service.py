@@ -1,3 +1,4 @@
+import logging
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -9,6 +10,8 @@ from fsai.parser import Parser
 from fsai.resolver import (
     Resolver, Resolved, NeedsGrams, NeedsFood, NeedsServing,
 )
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -62,6 +65,7 @@ class LoggerService:
     # --- основной вход ---
     def process_text(self, text: str) -> ProcessResult:
         meal = infer_meal(self.clock(), *self.meal_bounds)
+        logger.info("process_text: %r (приём пищи по времени: %s)", text, meal)
         items = self.parser.parse(text, self.store.all_alias_names())
         resolved: dict[int, ResolvedItem] = {}
         pending: dict[int, PendingPrompt] = {}
@@ -71,6 +75,9 @@ class LoggerService:
         session = _Session(str(uuid.uuid4()), text, meal, resolved, pending)
         if pending:
             self._sessions[session.session_id] = session
+            logger.info("Нужен ввод по %s позициям, авто-разрешено %s "
+                        "(session=%s)", len(pending), len(resolved),
+                        session.session_id)
             return NeedsInput(session.session_id, list(pending.values()))
         return self._finalize_session(session)
 
@@ -119,7 +126,10 @@ class LoggerService:
             return 0
         rec = self.store.get_log(log_id)
         if not rec:
+            logger.warning("undo: log_id=%s не найден", log_id)
             return 0
+        logger.info("undo log_id=%s: удаляю %s записей",
+                    log_id, len(rec["entry_ids"]))
         for eid in rec["entry_ids"]:
             self.client.delete_entry(eid)
         return len(rec["entry_ids"])
@@ -143,9 +153,12 @@ class LoggerService:
     def _finalize_session(self, session: _Session) -> AutoLogged:
         items = [session.resolved[i] for i in sorted(session.resolved)]
         if not items:
+            logger.info("Нечего записывать (0 разрешённых позиций)")
             return AutoLogged(lines=[], log_id=None)
         entry_ids = self.diary.write(items)
         log_id = self.store.add_log(session.raw_text, entry_ids)
+        logger.info("Залогировано %s позиций, log_id=%s, entry_ids=%s",
+                    len(items), log_id, entry_ids)
         lines = [
             f"{it.food_name} — {it.grams:g} г ({it.meal})" for it in items
         ]

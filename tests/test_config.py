@@ -29,6 +29,9 @@ def test_defaults_applied():
     assert cfg.db_path == "fsai.sqlite3"
     assert (cfg.meal_breakfast_start, cfg.meal_lunch_start,
             cfg.meal_dinner_start, cfg.meal_dinner_end) == (5, 11, 16, 22)
+    assert cfg.log_level == "INFO"
+    assert cfg.poll_interval == 0.0
+    assert cfg.poll_timeout == 10
 
 
 def test_missing_required_raises():

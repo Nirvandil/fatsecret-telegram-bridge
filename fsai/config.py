@@ -20,6 +20,9 @@ class Config:
     meal_lunch_start: int
     meal_dinner_start: int
     meal_dinner_end: int
+    log_level: str
+    poll_interval: float
+    poll_timeout: int
 
 
 def _required(env: Mapping[str, str], key: str) -> str:
@@ -47,4 +50,7 @@ def load_config(env: Mapping[str, str] | None = None) -> Config:
         meal_lunch_start=int(env.get("MEAL_LUNCH_START", "11")),
         meal_dinner_start=int(env.get("MEAL_DINNER_START", "16")),
         meal_dinner_end=int(env.get("MEAL_DINNER_END", "22")),
+        log_level=env.get("LOG_LEVEL", "INFO"),
+        poll_interval=float(env.get("POLL_INTERVAL", "0.0")),
+        poll_timeout=int(env.get("POLL_TIMEOUT", "10")),
     )

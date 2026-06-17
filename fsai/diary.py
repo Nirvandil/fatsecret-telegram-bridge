@@ -1,7 +1,10 @@
+import logging
 from datetime import datetime
 from typing import Optional
 
 from fsai.models import ResolvedItem
+
+logger = logging.getLogger(__name__)
 
 
 def infer_meal(now: datetime, breakfast: int = 5, lunch: int = 11,
@@ -29,6 +32,8 @@ class Diary:
         ids: list[str] = []
         for it in items:
             n = units_for(it.grams, it.grams_per_serving)
+            logger.info("Запись в дневник: %s — %g г (%s), units=%g",
+                        it.food_name, it.grams, it.meal, n)
             ids.append(self.client.create_entry(
                 it.food_id, it.food_name, it.serving_id, n, it.meal, date))
         return ids
