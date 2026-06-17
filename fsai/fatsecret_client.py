@@ -49,15 +49,21 @@ class FatSecretClient:
         for s in (food.servings.serving or []):
             unit = s.metric_serving_unit
             amount = s.metric_serving_amount
-            grams = float(amount) if unit == "g" and amount is not None else None
+            # number_of_units — сколько базовых единиц в этой порции (для «100 g»
+            # это 100). Граммов на ОДНУ логируемую единицу = amount / number_of_units.
+            nunits = float(s.number_of_units) if s.number_of_units else 1.0
+            grams = (float(amount) / nunits
+                     if unit == "g" and amount is not None and nunits else None)
             out.append(Serving(
                 serving_id=str(s.serving_id),
                 description=s.serving_description or "",
                 grams=grams,
                 metric_unit=unit,
+                is_gram=(s.measurement_description == "g"),
             ))
-        logger.info("  → %s порций (%s в граммах)",
-                    len(out), sum(1 for s in out if s.grams))
+        logger.info("  → %s порций (%s в граммах, g-порция: %s)",
+                    len(out), sum(1 for s in out if s.grams),
+                    any(s.is_gram for s in out))
         return out
 
     def create_entry(self, food_id: str, food_name: str, serving_id: str,

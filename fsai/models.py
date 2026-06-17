@@ -26,11 +26,19 @@ class FoodCandidate:
 
 @dataclass
 class Serving:
-    """Порция продукта из food.get."""
+    """Порция продукта из food.get.
+
+    grams — сколько граммов в ОДНОЙ логируемой единице этой порции
+    (metric_serving_amount / number_of_units). Для порции «100 g» FatSecret
+    отдаёт metric=100, number_of_units=100 → grams=1.0, и тогда
+    number_of_units в записи дневника = число граммов.
+    is_gram — это «граммовая» порция (measurement_description == "g").
+    """
     serving_id: str
     description: str
-    grams: Optional[float]      # граммы, если metric_serving_unit == "g"
+    grams: Optional[float]      # граммов на одну логируемую единицу
     metric_unit: Optional[str]
+    is_gram: bool = False
 
 
 @dataclass

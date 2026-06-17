@@ -66,7 +66,9 @@ class Resolver:
             logger.info("'%s' (food=%s): нет порции в граммах → спрашиваем серию",
                         parsed.name, food_id)
             return NeedsServing(parsed, food_id, food_name, servings, meal)
-        chosen = gram_servings[0]
+        # Предпочитаем «граммовую» порцию (measurement='g'): тогда grams=1 г/единица,
+        # number_of_units == граммы, и дневник показывает ровно заданные граммы.
+        chosen = next((s for s in gram_servings if s.is_gram), gram_servings[0])
         rec = AliasRecord(
             alias=parsed.name, food_id=food_id, serving_id=chosen.serving_id,
             grams_per_serving=chosen.grams, food_name=food_name,

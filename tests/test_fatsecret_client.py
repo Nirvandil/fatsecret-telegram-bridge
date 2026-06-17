@@ -73,17 +73,21 @@ def test_search_foods_filters_null_candidate():
     assert make_client(fake).search_foods("яблоки") == []
 
 
-def test_get_servings_extracts_gram_serving():
+def test_get_servings_computes_grams_per_unit_and_gram_flag():
     fake = FakeFs()
     fake.foods.food_return = NS(servings=NS(serving=[
-        NS(serving_id=10, serving_description="1 cup",
-           metric_serving_amount=Decimal("195.0"), metric_serving_unit="g"),
-        NS(serving_id=11, serving_description="1 oz",
-           metric_serving_amount=Decimal("1.0"), metric_serving_unit="oz"),
+        # «100 g»: number_of_units=100 → граммов на единицу = 100/100 = 1.0
+        NS(serving_id=10, serving_description="100 g",
+           metric_serving_amount=Decimal("100.0"), metric_serving_unit="g",
+           number_of_units=Decimal("100.0"), measurement_description="g"),
+        # «1 cup»: number_of_units=1 → граммов на единицу = 152/1 = 152.0
+        NS(serving_id=11, serving_description="1 cup",
+           metric_serving_amount=Decimal("152.0"), metric_serving_unit="g",
+           number_of_units=Decimal("1.0"), measurement_description="cup"),
     ]))
     out = make_client(fake).get_servings("1")
-    assert out[0] == Serving("10", "1 cup", 195.0, "g")
-    assert out[1] == Serving("11", "1 oz", None, "oz")
+    assert out[0] == Serving("10", "100 g", 1.0, "g", is_gram=True)
+    assert out[1] == Serving("11", "1 cup", 152.0, "g", is_gram=False)
 
 
 def test_get_servings_handles_none_food():

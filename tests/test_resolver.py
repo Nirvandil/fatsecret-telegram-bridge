@@ -59,21 +59,32 @@ def test_unknown_search_falls_back_to_name(tmp_path):
     assert c.last_query == "греча"         # query_en нет → ищем по name
 
 
-def test_confirm_food_picks_gram_serving_and_saves_alias(tmp_path):
+def test_confirm_food_prefers_gram_serving_and_saves_alias(tmp_path):
     s = store(tmp_path)
     c = FakeClient()
+    # Граммовая порция стоит ВТОРОЙ, но должна быть выбрана (is_gram=True).
     c.servings_return = [
-        Serving("99", "1 cup", None, "cup"),
-        Serving("100", "100 g", 100.0, "g"),
+        Serving("99", "1 cup", 152.0, "g", is_gram=False),
+        Serving("100", "100 g", 1.0, "g", is_gram=True),
     ]
     r = Resolver(c, s)
     parsed = ParsedItem(name="греча", grams=200.0)
     res = r.confirm_food(parsed, "1", "Buckwheat", meal="dinner")
     assert isinstance(res, Resolved)
-    assert res.item.serving_id == "100" and res.item.grams_per_serving == 100.0
+    assert res.item.serving_id == "100" and res.item.grams_per_serving == 1.0
     assert res.item.meal == "dinner"
     saved = s.get_alias("греча")
     assert saved.food_id == "1" and saved.serving_id == "100"
+
+
+def test_confirm_food_falls_back_to_first_gram_serving(tmp_path):
+    # Нет «g»-порции → берём первую порцию в граммах.
+    c = FakeClient()
+    c.servings_return = [Serving("99", "1 cup", 152.0, "g", is_gram=False)]
+    r = Resolver(c, store(tmp_path))
+    res = r.confirm_food(ParsedItem(name="x", grams=200.0), "1", "X", meal="lunch")
+    assert isinstance(res, Resolved)
+    assert res.item.serving_id == "99" and res.item.grams_per_serving == 152.0
 
 
 def test_confirm_food_without_gram_serving_asks_serving(tmp_path):
