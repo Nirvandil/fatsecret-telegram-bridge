@@ -1,4 +1,6 @@
 """Точка входа: python -m fsai — запускает бота в режиме long-polling."""
+import asyncio
+
 from dotenv import load_dotenv
 
 from fsai.bot import TelegramBot
@@ -25,6 +27,13 @@ def main() -> None:
     )
     bot = TelegramBot(config, service)
     app = bot.build_application()
+    # Python 3.14: asyncio.get_event_loop() больше не создаёт цикл сам, а
+    # python-telegram-bot v21 в run_polling() на это рассчитывает. Создаём явно.
+    try:
+        asyncio.get_event_loop()
+    except RuntimeError:
+        asyncio.set_event_loop(asyncio.new_event_loop())
+    print("fsai запущен в режиме long-polling. Останов — Ctrl+C.")
     app.run_polling()
 
 
