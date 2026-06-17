@@ -65,6 +65,14 @@ def test_search_foods_empty():
     assert make_client(fake).search_foods("nothing") == []
 
 
+def test_search_foods_filters_null_candidate():
+    # Для отсутствующих совпадений FatSecret возвращает «пустого» кандидата.
+    fake = FakeFs()
+    fake.foods.search_return = [NS(food_id=None, food_name=None,
+                                   food_description="")]
+    assert make_client(fake).search_foods("яблоки") == []
+
+
 def test_get_servings_extracts_gram_serving():
     fake = FakeFs()
     fake.foods.food_return = NS(servings=NS(serving=[

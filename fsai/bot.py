@@ -40,9 +40,18 @@ def undo_keyboard(log_id: int) -> InlineKeyboardMarkup:
     ]])
 
 
+def _candidate_label(c) -> str:
+    name = (c.food_name or "").strip()
+    if name and c.description:
+        label = f"{name} — {c.description}"
+    else:
+        label = name or c.description or f"id {c.food_id}"
+    return label[:100]  # Telegram: подпись кнопки должна быть короткой и непустой
+
+
 def food_keyboard(session_id: str, prompt: PendingPrompt) -> InlineKeyboardMarkup:
     rows = [[InlineKeyboardButton(
-        c.food_name + (f" — {c.description}" if c.description else ""),
+        _candidate_label(c),
         callback_data=pack_cb("food", session_id, prompt.index, c.food_id))]
         for c in prompt.candidates]
     return InlineKeyboardMarkup(rows)

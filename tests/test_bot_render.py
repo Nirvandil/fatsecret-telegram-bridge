@@ -34,6 +34,16 @@ def test_food_keyboard_has_button_per_candidate():
     assert flat[0].callback_data == pack_cb("food", "sess-1", 0, "1")
 
 
+def test_food_keyboard_handles_empty_name():
+    prompt = PendingPrompt(
+        index=0, kind="food", parsed=ParsedItem("x", 10.0),
+        candidates=[FoodCandidate("7", "", "")],
+    )
+    btn = food_keyboard("s", prompt).inline_keyboard[0][0]
+    assert btn.text                      # подпись непустая
+    assert btn.callback_data == pack_cb("food", "s", 0, "7")
+
+
 def test_build_needs_input_messages_for_grams():
     prompt = PendingPrompt(index=0, kind="grams", parsed=ParsedItem("гречка"))
     msgs = build_needs_input_messages("sess-1", NeedsInput("sess-1", [prompt]))

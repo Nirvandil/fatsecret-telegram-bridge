@@ -25,14 +25,17 @@ class FatSecretClient:
         logger.info("FatSecret foods.search %r (max=%s)", query, max_results)
         foods = self._fs.foods.search_v1(
             search_expression=query, max_results=max_results)
-        out = [
-            FoodCandidate(
+        out = []
+        for f in (foods or []):
+            # Когда совпадений нет, FatSecret возвращает один «пустой» кандидат
+            # с food_id=None — это не результат, пропускаем.
+            if f.food_id is None:
+                continue
+            out.append(FoodCandidate(
                 food_id=str(f.food_id),
-                food_name=f.food_name,
+                food_name=f.food_name or "",
                 description=f.food_description or "",
-            )
-            for f in (foods or [])
-        ]
+            ))
         logger.info("  → %s кандидатов", len(out))
         return out
 
