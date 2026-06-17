@@ -51,12 +51,25 @@ class FatSecretClient:
     def create_entry(self, food_id: str, food_name: str, serving_id: str,
                      number_of_units: float, meal: str,
                      date=None) -> str:
-        entries = self._fs.diary.entry_create_v1(
-            food_id=food_id, food_entry_name=food_name, serving_id=serving_id,
-            number_of_units=number_of_units, meal=meal, date=date)
-        if not entries:
-            return ""
-        return str(entries[0].food_entry_id)
+        # Высокоуровневый fs.diary.entry_create_v1 в fatsecret 4.0.4 распаковывает
+        # ответ по ключу `food_entries.food_entry`, тогда как food_entry.create
+        # отвечает `{"food_entry_id": {"value": "<id>"}}` — из-за чего id теряется.
+        # Зовём _call напрямую и парсим id сами (нужен для отмены записи).
+        params = {
+            "method": "food_entry.create",
+            "food_id": food_id,
+            "food_entry_name": food_name,
+            "serving_id": serving_id,
+            "number_of_units": number_of_units,
+            "meal": meal,
+        }
+        if date is not None:
+            params["date"] = self._fs.unix_time_v2(date)
+        payload = self._fs._call(params, method="POST")
+        fe = payload.get("food_entry_id") if isinstance(payload, dict) else None
+        if isinstance(fe, dict):
+            return str(fe.get("value", ""))
+        return str(fe) if fe else ""
 
     def delete_entry(self, entry_id: str) -> None:
         self._fs.diary.entry_delete_v1(food_entry_id=entry_id)

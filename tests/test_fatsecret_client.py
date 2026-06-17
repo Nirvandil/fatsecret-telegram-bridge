@@ -23,15 +23,7 @@ class FakeFoods:
 
 class FakeDiary:
     def __init__(self):
-        self.created = []
         self.deleted = []
-        self.create_return = []
-
-    def entry_create_v1(self, food_id=None, food_entry_name=None, serving_id=None,
-                        number_of_units=None, meal=None, date=None):
-        self.created.append((food_id, food_entry_name, serving_id,
-                             number_of_units, meal, date))
-        return self.create_return
 
     def entry_delete_v1(self, food_entry_id=None):
         self.deleted.append(food_entry_id)
@@ -41,6 +33,12 @@ class FakeFs:
     def __init__(self):
         self.foods = FakeFoods()
         self.diary = FakeDiary()
+        self.call_return = {"food_entry_id": {"value": "9001"}}
+        self.calls = []
+
+    def _call(self, params, method="GET", url=None, json_body=None):
+        self.calls.append((dict(params), method))
+        return self.call_return
 
 
 def make_client(fake):
@@ -92,17 +90,26 @@ def test_get_servings_handles_none_servings():
     assert make_client(fake).get_servings("1") == []
 
 
-def test_create_entry_returns_str_id_and_passes_args():
+def test_create_entry_returns_id_from_call_and_passes_args():
     fake = FakeFs()
-    fake.diary.create_return = [NS(food_entry_id=9001)]
-    eid = make_client(fake).create_entry("1", "Buckwheat", "10", 2.0, "lunch", None)
+    fake.call_return = {"food_entry_id": {"value": "9001"}}
+    eid = make_client(fake).create_entry("39690", "Buckwheat", "62421", 2.0,
+                                         "lunch", None)
     assert eid == "9001"
-    assert fake.diary.created == [("1", "Buckwheat", "10", 2.0, "lunch", None)]
+    params, method = fake.calls[0]
+    assert method == "POST"
+    assert params["method"] == "food_entry.create"
+    assert params["food_id"] == "39690"
+    assert params["food_entry_name"] == "Buckwheat"
+    assert params["serving_id"] == "62421"
+    assert params["number_of_units"] == 2.0
+    assert params["meal"] == "lunch"
+    assert "date" not in params          # date=None опускается
 
 
-def test_create_entry_empty_response_returns_empty_string():
+def test_create_entry_missing_id_returns_empty_string():
     fake = FakeFs()
-    fake.diary.create_return = []
+    fake.call_return = {}
     assert make_client(fake).create_entry("1", "X", "2", 1.0, "lunch") == ""
 
 
