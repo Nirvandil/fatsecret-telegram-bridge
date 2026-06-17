@@ -104,6 +104,8 @@ class TelegramBot:
         self._awaiting: dict[int, tuple] = {}
         # session_id -> {index -> PendingPrompt}, чтобы доставать servings в колбэке
         self._prompts: dict[str, dict[int, PendingPrompt]] = {}
+        # session_id -> {index -> kind} — какие запросы уже показаны (анти-дубли)
+        self._sent: dict[str, dict[int, str]] = {}
 
     def build_application(self) -> Application:
         app = Application.builder().token(self.config.telegram_token).build()
@@ -190,17 +192,33 @@ class TelegramBot:
             await self._send_needs_input(reply, res, chat_id)
 
     async def _send_needs_input(self, reply, res: NeedsInput, chat_id):
-        self._prompts[res.session_id] = {p.index: p for p in res.pending}
+        prompts = self._prompts.setdefault(res.session_id, {})
+        sent = self._sent.setdefault(res.session_id, {})
+        grams_await = None
         for prompt, msg in zip(
                 res.pending, build_needs_input_messages(res.session_id, res)):
+            prompts[prompt.index] = prompt
+            if grams_await is None and prompt.kind == "grams":
+                grams_await = prompt.index
+            # Уже показывали этот запрос в этом виде — не дублируем сообщение.
+            if sent.get(prompt.index) == prompt.kind:
+                continue
             await reply(msg.text, reply_markup=msg.keyboard)
-            if prompt.kind == "grams":
-                self._awaiting[chat_id] = ("item_grams", res.session_id,
-                                           prompt.index)
+            sent[prompt.index] = prompt.kind
+        # Текстовый ответ-число ждём для первого незакрытого grams-запроса.
+        if grams_await is not None:
+            self._awaiting[chat_id] = ("item_grams", res.session_id, grams_await)
 
     async def _finalize_and_render(self, reply, session_id, chat_id):
         res = await asyncio.to_thread(self.service.finalize, session_id)
-        await self._render(reply, res, chat_id)
+        if isinstance(res, AutoLogged):
+            # Сессия закрыта — чистим состояние и показываем итог.
+            self._sent.pop(session_id, None)
+            self._prompts.pop(session_id, None)
+            await self._render(reply, res, chat_id)
+        else:
+            # Ещё есть незакрытые позиции — досылаем только новые запросы.
+            await self._send_needs_input(reply, res, chat_id)
 
     def _find_serving(self, session_id, index, serving_id):
         prompt = self._prompts.get(session_id, {}).get(index)

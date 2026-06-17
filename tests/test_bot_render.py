@@ -2,6 +2,7 @@ from fsai.models import FoodCandidate, ParsedItem
 from fsai.service import AutoLogged, NeedsInput, PendingPrompt
 from fsai.bot import (
     format_autolog, food_keyboard, pack_cb, unpack_cb, build_needs_input_messages,
+    TelegramBot,
 )
 
 
@@ -48,3 +49,27 @@ def test_build_needs_input_messages_for_grams():
     prompt = PendingPrompt(index=0, kind="grams", parsed=ParsedItem("гречка"))
     msgs = build_needs_input_messages("sess-1", NeedsInput("sess-1", [prompt]))
     assert any("грамм" in m.text.lower() for m in msgs)
+
+
+class _ReplyRecorder:
+    def __init__(self):
+        self.calls = []
+
+    async def __call__(self, text, reply_markup=None):
+        self.calls.append(text)
+
+
+async def test_send_needs_input_does_not_duplicate_on_repeat():
+    bot = TelegramBot(config=None, service=None)
+    reply = _ReplyRecorder()
+    res = NeedsInput("s1", [
+        PendingPrompt(0, "food", ParsedItem("a", query_en="a", grams=10.0),
+                      candidates=[FoodCandidate("1", "A", "")]),
+        PendingPrompt(1, "food", ParsedItem("b", query_en="b", grams=20.0),
+                      candidates=[FoodCandidate("2", "B", "")]),
+    ])
+    await bot._send_needs_input(reply, res, chat_id=1)
+    assert len(reply.calls) == 2
+    # Повторная отправка тех же запросов (после resolve другого пункта) — без дублей.
+    await bot._send_needs_input(reply, res, chat_id=1)
+    assert len(reply.calls) == 2
