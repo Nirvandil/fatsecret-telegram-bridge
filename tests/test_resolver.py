@@ -39,14 +39,24 @@ def test_known_alias_resolves_directly(tmp_path):
     assert res.item.grams_per_serving == 100.0 and res.item.meal == "lunch"
 
 
-def test_unknown_triggers_search(tmp_path):
+def test_unknown_triggers_search_by_english_query(tmp_path):
     c = FakeClient()
     c.search_return = [FoodCandidate("1", "Buckwheat", "")]
     r = Resolver(c, store(tmp_path))
-    res = r.resolve(ParsedItem(name="греча", grams=200.0), meal="lunch")
+    res = r.resolve(ParsedItem(name="греча", query_en="buckwheat", grams=200.0),
+                    meal="lunch")
     assert isinstance(res, NeedsFood)
     assert res.candidates[0].food_id == "1"
     assert res.parsed.name == "греча"
+    assert c.last_query == "buckwheat"     # ищем по англоязычному запросу
+
+
+def test_unknown_search_falls_back_to_name(tmp_path):
+    c = FakeClient()
+    c.search_return = []
+    r = Resolver(c, store(tmp_path))
+    r.resolve(ParsedItem(name="греча", grams=200.0), meal="lunch")
+    assert c.last_query == "греча"         # query_en нет → ищем по name
 
 
 def test_confirm_food_picks_gram_serving_and_saves_alias(tmp_path):

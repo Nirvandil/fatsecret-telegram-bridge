@@ -52,8 +52,10 @@ class Resolver:
             logger.info("'%s': найдено в таблице (food=%s) → %s г",
                         item.name, rec.food_id, item.grams)
             return Resolved(self._to_resolved(item, rec, meal))
-        logger.info("'%s': нет в таблице → поиск в FatSecret", item.name)
-        candidates = self.client.search_foods(item.name)
+        search_term = item.query_en or item.name
+        logger.info("'%s': нет в таблице → поиск в FatSecret по %r",
+                    item.name, search_term)
+        candidates = self.client.search_foods(search_term)
         return NeedsFood(item, candidates, meal)
 
     def confirm_food(self, parsed: ParsedItem, food_id: str,

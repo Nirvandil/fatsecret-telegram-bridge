@@ -11,13 +11,18 @@ logger = logging.getLogger(__name__)
 SYSTEM_PROMPT = (
     "Ты извлекаешь позиции питания из надиктованной фразы на русском. "
     "Верни СТРОГО JSON-объект вида "
-    '{"items": [{"name": str, "grams": number|null, '
+    '{"items": [{"name": str, "query_en": str, "grams": number|null, '
     '"meal_hint": "breakfast"|"lunch"|"dinner"|"other"|null, '
     '"confidence": number}]}. '
-    "Никакого текста вне JSON. Граммы — число в граммах, если можно их "
-    "вычислить; иначе null. Если в подсказке дан список известных названий, "
-    "приводи name к наиболее близкому из них (синонимы, падежи, опечатки); "
-    "иначе оставляй как сказано. confidence от 0 до 1."
+    "Никакого текста вне JSON. "
+    "name — название как сказал пользователь, по-русски. "
+    "query_en — короткий АНГЛИЙСКИЙ поисковый запрос для базы продуктов FatSecret "
+    "(US/English): обычное название продукта по-английски, например "
+    "'яблоки'→'apple', 'овсянка сухая'→'oatmeal dry', 'творог 5%'→'cottage cheese'. "
+    "Граммы — число в граммах, если можно их вычислить; иначе null. "
+    "Если в подсказке дан список известных названий, приводи name к наиболее "
+    "близкому из них (синонимы, падежи, опечатки); иначе оставляй как сказано. "
+    "confidence от 0 до 1."
 )
 
 _FENCE_RE = re.compile(r"```(?:json)?\s*(.*?)\s*```", re.DOTALL)
@@ -42,8 +47,10 @@ class Parser:
         for it in data["items"]:
             if not isinstance(it, dict) or not it.get("name"):
                 continue
+            query_en = it.get("query_en")
             items.append(ParsedItem(
                 name=str(it["name"]).strip(),
+                query_en=str(query_en).strip() if query_en else None,
                 grams=_to_float(it.get("grams")),
                 meal_hint=it.get("meal_hint") or None,
                 confidence=float(it.get("confidence", 1.0)),

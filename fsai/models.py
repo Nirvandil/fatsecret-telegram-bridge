@@ -4,8 +4,13 @@ from typing import Optional
 
 @dataclass
 class ParsedItem:
-    """Результат парсинга одной позиции фразы."""
+    """Результат парсинга одной позиции фразы.
+
+    `name` — название как сказал пользователь (ключ личной таблицы, по-русски).
+    `query_en` — англоязычный поисковый запрос для базы FatSecret (US/English).
+    """
     name: str
+    query_en: Optional[str] = None
     grams: Optional[float] = None
     meal_hint: Optional[str] = None
     confidence: float = 1.0
