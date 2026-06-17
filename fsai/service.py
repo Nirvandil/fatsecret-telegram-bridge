@@ -76,9 +76,14 @@ class LoggerService:
 
     # --- колбэки уточнения ---
     def choose_food(self, session_id: str, index: int, food_id: str,
-                    food_name: str) -> None:
+                    food_name: Optional[str] = None) -> None:
         session = self._sessions[session_id]
         prompt = session.pending[index]
+        if food_name is None:
+            food_name = next(
+                (c.food_name for c in prompt.candidates if c.food_id == food_id),
+                food_id,
+            )
         res = self.resolver.confirm_food(prompt.parsed, food_id, food_name,
                                          session.meal)
         self._record(index, prompt.parsed, res, session.resolved,
