@@ -141,9 +141,14 @@ The whole flow is logged to the console — set `LOG_LEVEL=DEBUG` to also see th
 
 ## Limitations
 
-- **Single user.** The bot only responds in one chat (`OWNER_CHAT_ID`); everything else is ignored.
-- **US/English food database.** The free FatSecret Basic tier exposes only the US/English dataset — localized (e.g. Russian) search returns nothing. That's why the LLM translates food names to English before searching. You'll be matching against generic US food entries (e.g. "Apple", "Oatmeal"); for region-specific branded products, pick the closest generic. (Localized databases are a FatSecret Premier feature.)
-- **Best-effort matching.** The first pick per food is yours to confirm; after that it's remembered.
+- **Free tier = US/English food database only.** The free FatSecret *Basic* plan exposes only the US/English dataset. Searching in another language returns nothing — passing `region`/`language` (e.g. `RU`/`ru`) is accepted but yields no results on a free token (localized databases are a FatSecret **Premier** feature). This is why the LLM translates each food name to English before searching. In practice you match against **generic US food entries** ("Apple", "Oatmeal", "Sugar"); region-specific or branded products usually aren't present — pick the closest generic, and it's saved to your table for next time.
+- **Single user.** The bot only responds in one chat (`OWNER_CHAT_ID`); messages from anyone/anywhere else are silently ignored.
+- **Group chats need privacy mode off.** To use the bot in a group/supergroup, disable privacy mode in @BotFather and re-add the bot (see [Setup](#2-create-your-telegram-bot)). A private 1-on-1 chat is simpler and needs none of this.
+- **Meal is inferred from the time of day.** Breakfast/lunch/dinner/other is chosen by the clock (boundaries configurable via `MEAL_*` in `.env`); there is no in-chat meal override. Adjust in the FatSecret app if it guesses wrong.
+- **One "how many grams?" follow-up at a time.** If a single message contains several foods *without* grams, the bot reliably tracks only the first grams question. Easiest workaround: include grams in the message ("oatmeal 50g").
+- **You confirm each new food once.** The first time a food appears you pick the FatSecret match (best-effort); it's remembered afterwards. A wrong pick is logged like any entry — use **↩ Undo** or fix it in the FatSecret app.
+- **Requires an LLM API key with credit.** Parsing/translation calls Anthropic or OpenAI (cents per day for one user); quality depends on the model you pick.
+- **FatSecret may require IP whitelisting.** Some accounts must register the running machine's IP in the app's API settings, otherwise calls are rejected with a signature/permission error.
 
 ---
 
