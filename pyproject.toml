@@ -1,8 +1,14 @@
 [project]
 name = "fsai"
 version = "0.1.0"
-description = "Voice food logger for FatSecret via Telegram"
+description = "Dictate meals into Telegram and log them to your FatSecret food diary"
+readme = "README.md"
+license = { text = "MIT" }
+authors = [{ name = "Vladimir Sukharev" }]
 requires-python = ">=3.11"
+
+[project.urls]
+Homepage = "https://github.com/Nirvandil/fatsecret-telegram-bridge"
 dependencies = [
     "python-telegram-bot>=21,<22",
     "fatsecret>=4.0,<5",
