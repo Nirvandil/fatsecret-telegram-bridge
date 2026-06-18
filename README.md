@@ -1,6 +1,6 @@
 # fatsecret-telegram-bridge
 
-Dictate (or type) what you ate into Telegram — *"oatmeal 50g, chicken breast 150g, apple 200g"* — and it gets logged into your [FatSecret](https://www.fatsecret.com/) food diary automatically.
+Type what you ate into Telegram — *"oatmeal 50g, chicken breast 150g, apple 200g"* — and it gets logged into your [FatSecret](https://www.fatsecret.com/) food diary automatically. (Tip: use your phone keyboard's voice-to-text, e.g. Gboard's mic, to "dictate" the message instead of typing it.)
 
 A small, single-user Telegram bot that turns free-form meal descriptions into FatSecret diary entries. An LLM parses the message, the bot matches each food against your personal lookup table (which grows as you use it), and writes the entries via the FatSecret API. Built to kill the tedium of typing every weighed food by hand.
 
@@ -11,13 +11,13 @@ A small, single-user Telegram bot that turns free-form meal descriptions into Fa
 ## How it works
 
 ```
-You dictate in Telegram ──▶ text ──▶ [LLM: parse + translate to English]
+You type in Telegram ──▶ text ──▶ [LLM: parse + translate to English]
    ──▶ [match against your personal table / FatSecret search]
    ──▶ known & unambiguous? ── yes ──▶ write to diary  (+ "↩ Undo" button)
                              ── no  ──▶ ask you to pick the food (inline buttons)
 ```
 
-- **Voice is free and built-in:** use Telegram's own voice-to-text in the message field. The bot only ever receives text — no separate speech-to-text service needed.
+- **Text in, no STT service:** the bot only ever receives text. Type it, or use your phone keyboard's built-in voice-to-text (e.g. Gboard's mic) to dictate it into the message field — either way the bot just gets text, so no separate speech-to-text service is needed.
 - **Personal food table grows organically:** the first time you mention a food, the bot searches FatSecret and shows candidates as buttons; you tap one, and the mapping (your name → FatSecret food + serving) is saved forever. Next time it's logged instantly.
 - **LLM does parsing + translation:** it turns natural speech into structured `{food, grams}` pairs *and* produces an English search term, because the free FatSecret tier only exposes the **US/English** food database (see [Limitations](#limitations)).
 - **Undo:** every auto-logged message comes with an inline "↩ Undo" button.
@@ -128,7 +128,7 @@ You should see `fsai started (long-polling…)`. Now message your bot.
 
 ## Using it
 
-- **Dictate** a meal in Telegram (tap the mic in the message field), or just type:
+- **Type** a meal in Telegram — or use your keyboard's voice-to-text (e.g. Gboard's mic) to dictate it:
   *"buckwheat 200g, low-fat cottage cheese 150g, 1 banana"*.
 - For each **new** food, the bot replies with FatSecret candidates as buttons — tap the right one. The choice is saved to your personal table, so it's never asked again.
 - **Known** foods with explicit grams are logged immediately, with a **↩ Undo** button.
