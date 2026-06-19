@@ -9,17 +9,18 @@ from fatsecret_telegram_bridge.models import ParsedItem
 logger = logging.getLogger(__name__)
 
 SYSTEM_PROMPT = (
-    "You extract food items from a dictated meal phrase (the phrase may be in "
-    "any language, e.g. Russian). "
+    "You extract food items from a dictated meal phrase. The phrase may be in "
+    "any language. "
     "Return STRICTLY a JSON object of the form "
     '{"items": [{"name": str, "query_en": str, "grams": number|null, '
     '"meal_hint": "breakfast"|"lunch"|"dinner"|"other"|null, '
     '"confidence": number}]}. '
     "No text outside the JSON. "
     "name — the food as the user said it, in the original language. "
-    "query_en — a short ENGLISH search query for the FatSecret (US/English) food "
-    "database: the common English product name, e.g. "
-    "'яблоки'→'apple', 'овсянка сухая'→'oatmeal dry', 'творог 5%'→'cottage cheese'. "
+    "query_en — the common ENGLISH product name for that food, translated from "
+    "whatever language the user used, kept short and searchable for the "
+    "FatSecret (US/English) database, e.g. 'oatmeal', 'cottage cheese', "
+    "'chicken breast', 'buckwheat'. "
     "grams — a number in grams if it can be derived; otherwise null. "
     "If a list of known names is provided, map name to the closest one "
     "(synonyms, inflections, typos); otherwise keep it as said. "
