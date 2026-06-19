@@ -4,15 +4,15 @@ import threading
 from datetime import datetime, timezone
 from typing import Optional
 
-from fsai.models import AliasRecord
+from fatsecret_telegram_bridge.models import AliasRecord
 
 
 class Store:
     def __init__(self, path: str):
-        # Бот выполняет запросы из воркер-потоков (asyncio.to_thread), поэтому
-        # соединение должно быть доступно вне потока создания. check_same_thread
-        # снимает запрет, а _lock сериализует доступ (один Connection нельзя
-        # использовать параллельно из нескольких потоков).
+        # The bot runs queries from worker threads (asyncio.to_thread), so the
+        # connection must be usable outside its creating thread. check_same_thread
+        # lifts that restriction, and _lock serializes access (a single Connection
+        # cannot be used concurrently from multiple threads).
         self.conn = sqlite3.connect(path, check_same_thread=False)
         self.conn.row_factory = sqlite3.Row
         self._lock = threading.Lock()

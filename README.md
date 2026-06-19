@@ -4,7 +4,7 @@ Type what you ate into Telegram — *"oatmeal 50g, chicken breast 150g, apple 20
 
 A small, single-user Telegram bot that turns free-form meal descriptions into FatSecret diary entries. An LLM parses the message, the bot matches each food against your personal lookup table (which grows as you use it), and writes the entries via the FatSecret API. Built to kill the tedium of typing every weighed food by hand.
 
-> Python package name: `fsai`. Repo name: `fatsecret-telegram-bridge`.
+> Python package name: `fatsecret_telegram_bridge`. Repo name: `fatsecret-telegram-bridge`.
 
 ---
 
@@ -98,7 +98,7 @@ Open `.env` and fill in the values:
 | `LLM_PROVIDER` | `anthropic` or `openai` |
 | `LLM_MODEL` | e.g. `claude-haiku-4-5` or `gpt-4o-mini` |
 | `LLM_API_KEY` | Your Anthropic/OpenAI key |
-| `DB_PATH` | SQLite file path (default `fsai.sqlite3`) |
+| `DB_PATH` | SQLite file path (default `fatsecret_telegram_bridge.sqlite3`) |
 | `TZ` | Your timezone, e.g. `Europe/Berlin` |
 | `MEAL_*` | Hour boundaries for breakfast/lunch/dinner |
 | `LOG_LEVEL` | `INFO` (use `DEBUG` to see raw LLM output) |
@@ -111,7 +111,7 @@ Open `.env` and fill in the values:
 FatSecret diary access uses 3-legged OAuth. Run the helper, which uses an out-of-band PIN flow (works on headless servers):
 
 ```bash
-python -m fsai.auth_setup
+python -m fatsecret_telegram_bridge.auth_setup
 ```
 
 It prints an authorization URL → open it, approve access, copy the PIN back into the prompt. It then prints your `FATSECRET_ACCESS_TOKEN` and `FATSECRET_ACCESS_SECRET` — paste both into `.env`. These tokens are long-lived; you only do this once.
@@ -119,10 +119,10 @@ It prints an authorization URL → open it, approve access, copy the PIN back in
 ### 7. Run
 
 ```bash
-python -m fsai
+python -m fatsecret_telegram_bridge
 ```
 
-You should see `fsai started (long-polling…)`. Now message your bot.
+You should see `fatsecret_telegram_bridge started (long-polling…)`. Now message your bot.
 
 ---
 
@@ -154,10 +154,10 @@ The whole flow is logged to the console — set `LOG_LEVEL=DEBUG` to also see th
 
 ## Running as a long-lived service
 
-For always-on use, wrap `python -m fsai` in a process manager so the bot is reachable whenever you open Telegram:
+For always-on use, wrap `python -m fatsecret_telegram_bridge` in a process manager so the bot is reachable whenever you open Telegram:
 
-- **systemd** (Linux): a simple unit running `…/.venv/bin/python -m fsai` with `WorkingDirectory` set to the repo and `Restart=always`.
-- **Docker**: a tiny image with the repo + `.env` mounted, `CMD ["python", "-m", "fsai"]`.
+- **systemd** (Linux): a simple unit running `…/.venv/bin/python -m fatsecret_telegram_bridge` with `WorkingDirectory` set to the repo and `Restart=always`.
+- **Docker**: a tiny image with the repo + `.env` mounted, `CMD ["python", "-m", "fatsecret_telegram_bridge"]`.
 
 A cheap VPS, a Raspberry Pi, or a home server all work — long-polling needs no inbound ports.
 
@@ -170,7 +170,7 @@ pip install -e ".[dev]"
 pytest -q
 ```
 
-Architecture (small, focused modules under `fsai/`):
+Architecture (small, focused modules under `fatsecret_telegram_bridge/`):
 
 | Module | Responsibility |
 |---|---|

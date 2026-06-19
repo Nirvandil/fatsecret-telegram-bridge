@@ -1,14 +1,11 @@
 [project]
-name = "fsai"
+name = "fatsecret-telegram-bridge"
 version = "0.1.0"
 description = "Dictate meals into Telegram and log them to your FatSecret food diary"
 readme = "README.md"
 license = { text = "MIT" }
 authors = [{ name = "Vladimir Sukharev" }]
 requires-python = ">=3.11"
-
-[project.urls]
-Homepage = "https://github.com/Nirvandil/fatsecret-telegram-bridge"
 dependencies = [
     "python-telegram-bot>=21,<22",
     "fatsecret>=4.0,<5",
@@ -20,6 +17,12 @@ dependencies = [
 [project.optional-dependencies]
 dev = ["pytest>=8.0", "pytest-asyncio>=0.23"]
 
+[project.urls]
+Homepage = "https://github.com/Nirvandil/fatsecret-telegram-bridge"
+
+[project.scripts]
+fatsecret-telegram-bridge = "fatsecret_telegram_bridge.__main__:main"
+
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
@@ -29,4 +32,4 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
-include = ["fsai*"]
+include = ["fatsecret_telegram_bridge*"]

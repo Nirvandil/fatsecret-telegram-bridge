@@ -1,9 +1,9 @@
 import json
 from datetime import datetime
 
-from fsai.models import AliasRecord, FoodCandidate, Serving
-from fsai.service import LoggerService, AutoLogged, NeedsInput
-from fsai.store import Store
+from fatsecret_telegram_bridge.models import AliasRecord, FoodCandidate, Serving
+from fatsecret_telegram_bridge.service import LoggerService, AutoLogged, NeedsInput
+from fatsecret_telegram_bridge.store import Store
 from tests.conftest import FakeProvider
 
 

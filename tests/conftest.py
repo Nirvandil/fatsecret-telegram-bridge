@@ -1,10 +1,10 @@
 import pytest
 
-from fsai.llm.base import LLMProvider
+from fatsecret_telegram_bridge.llm.base import LLMProvider
 
 
 class FakeProvider(LLMProvider):
-    """Возвращает заранее заданную строку, игнорируя промпт."""
+    """Return a preset string, ignoring the prompt."""
 
     def __init__(self, response: str = ""):
         self.response = response

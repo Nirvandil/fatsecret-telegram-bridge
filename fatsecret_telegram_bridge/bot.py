@@ -8,14 +8,14 @@ from telegram.ext import (
     Application, CallbackQueryHandler, ContextTypes, MessageHandler, filters,
 )
 
-from fsai.service import AutoLogged, NeedsInput, PendingPrompt
+from fatsecret_telegram_bridge.service import AutoLogged, NeedsInput, PendingPrompt
 
 logger = logging.getLogger(__name__)
 
 CB_SEP = "|"
 
 
-# ---------- чистые функции (тестируемы без Telegram runtime) ----------
+# ---------- pure functions (testable without the Telegram runtime) ----------
 
 def pack_cb(action: str, session_id: str, index: int, payload: str) -> str:
     return CB_SEP.join([action, session_id, str(index), payload])
@@ -28,14 +28,14 @@ def unpack_cb(data: str):
 
 def format_autolog(res: AutoLogged) -> str:
     if not res.lines:
-        return "Хм, не понял ни одной позиции. Переформулируй?"
+        return "Hmm, I didn't catch any items. Rephrase?"
     body = "\n".join(f"• {line}" for line in res.lines)
-    return f"✅ Записано:\n{body}"
+    return f"✅ Logged:\n{body}"
 
 
 def undo_keyboard(log_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([[
-        InlineKeyboardButton("↩ Отменить", callback_data=pack_cb(
+        InlineKeyboardButton("↩ Undo", callback_data=pack_cb(
             "undo", "-", 0, str(log_id)))
     ]])
 
@@ -46,7 +46,7 @@ def _candidate_label(c) -> str:
         label = f"{name} — {c.description}"
     else:
         label = name or c.description or f"id {c.food_id}"
-    return label[:100]  # Telegram: подпись кнопки должна быть короткой и непустой
+    return label[:100]  # Telegram: a button label must be short and non-empty
 
 
 def food_keyboard(session_id: str, prompt: PendingPrompt) -> InlineKeyboardMarkup:
@@ -77,51 +77,51 @@ def build_needs_input_messages(session_id: str,
     for prompt in res.pending:
         if prompt.kind == "grams":
             msgs.append(OutMessage(
-                f"Сколько грамм «{prompt.parsed.name}»? Пришли число."))
+                f"How many grams of '{prompt.parsed.name}'? Send a number."))
         elif prompt.kind == "food":
             if prompt.candidates:
                 msgs.append(OutMessage(
-                    f"Выбери продукт для «{prompt.parsed.name}»:",
+                    f"Pick a food for '{prompt.parsed.name}':",
                     food_keyboard(session_id, prompt)))
             else:
                 msgs.append(OutMessage(
-                    f"Ничего не нашёл по «{prompt.parsed.name}». "
-                    f"Попробуй другое название."))
+                    f"Nothing found for '{prompt.parsed.name}'. "
+                    f"Try a different name."))
         elif prompt.kind == "serving":
             msgs.append(OutMessage(
-                f"У «{prompt.parsed.name}» нет порции в граммах. "
-                f"Выбери серию:", serving_keyboard(session_id, prompt)))
+                f"'{prompt.parsed.name}' has no gram-based serving. "
+                f"Pick a serving:", serving_keyboard(session_id, prompt)))
     return msgs
 
 
-# ---------- runtime-обвязка (проверяется вручную, см. README) ----------
+# ---------- runtime wiring (verified manually, see README) ----------
 
 class TelegramBot:
     def __init__(self, config, service):
         self.config = config
         self.service = service
-        # chat_id -> что ждём текстом дальше
+        # chat_id -> what text input we're waiting for next
         self._awaiting: dict[int, tuple] = {}
-        # session_id -> {index -> PendingPrompt}, чтобы доставать servings в колбэке
+        # session_id -> {index -> PendingPrompt}, to fetch servings in a callback
         self._prompts: dict[str, dict[int, PendingPrompt]] = {}
-        # session_id -> {index -> kind} — какие запросы уже показаны (анти-дубли)
+        # session_id -> {index -> kind} — which prompts were already shown (dedup)
         self._sent: dict[str, dict[int, str]] = {}
 
     def build_application(self) -> Application:
         app = Application.builder().token(self.config.telegram_token).build()
-        # OWNER_CHAT_ID — id чата (личка: == user_id, группа/супергруппа: отрицательный).
-        # Фильтруем по чату, а не по пользователю-отправителю.
+        # OWNER_CHAT_ID is a chat id (private: == user_id, group/supergroup:
+        # negative). Filter by chat, not by the sending user.
         owner = filters.Chat(chat_id=self.config.owner_chat_id)
         app.add_handler(MessageHandler(
             filters.TEXT & ~filters.COMMAND & owner, self.on_text))
         app.add_handler(CallbackQueryHandler(self.on_callback))
         return app
 
-    # --- входящий текст ---
+    # --- incoming text ---
     async def on_text(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         chat_id = update.effective_chat.id
         text = update.message.text
-        logger.info("Сообщение от chat=%s: %r", chat_id, text)
+        logger.info("Message from chat=%s: %r", chat_id, text)
 
         try:
             awaiting = self._awaiting.get(chat_id)
@@ -132,14 +132,14 @@ class TelegramBot:
             res = await asyncio.to_thread(self.service.process_text, text)
             await self._render(update.message.reply_text, res, chat_id)
         except Exception:
-            logger.exception("Ошибка обработки сообщения")
-            await update.message.reply_text("⚠️ Что-то пошло не так, см. логи.")
+            logger.exception("Error handling message")
+            await update.message.reply_text("⚠️ Something went wrong, check the logs.")
 
     async def _handle_awaited_number(self, update, chat_id, awaiting, text):
         try:
             number = float(text.replace(",", "."))
         except ValueError:
-            await update.message.reply_text("Нужно число. Попробуй ещё раз.")
+            await update.message.reply_text("I need a number. Try again.")
             return
         self._awaiting.pop(chat_id, None)
         kind = awaiting[0]
@@ -154,7 +154,7 @@ class TelegramBot:
                 self.service.choose_serving, sid, idx, serving, number)
             await self._finalize_and_render(update.message.reply_text, sid, chat_id)
 
-    # --- колбэки кнопок ---
+    # --- button callbacks ---
     async def on_callback(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         query = update.callback_query
         await query.answer()
@@ -166,24 +166,24 @@ class TelegramBot:
         try:
             if action == "undo":
                 count = await asyncio.to_thread(self.service.undo, int(payload))
-                await query.edit_message_text(f"↩ Отменено записей: {count}")
+                await query.edit_message_text(f"↩ Undone entries: {count}")
                 return
             if action == "food":
                 await asyncio.to_thread(self.service.choose_food, sid, idx, payload)
-                await query.edit_message_text("Принято.")
+                await query.edit_message_text("Got it.")
                 await self._finalize_and_render(
                     query.message.reply_text, sid, chat_id)
                 return
             if action == "serv":
                 self._awaiting[chat_id] = ("serving_grams", sid, idx, payload)
                 await query.edit_message_text(
-                    "Сколько грамм в одной такой порции? Пришли число.")
+                    "How many grams in one such serving? Send a number.")
                 return
         except Exception:
-            logger.exception("Ошибка обработки колбэка")
-            await query.message.reply_text("⚠️ Что-то пошло не так, см. логи.")
+            logger.exception("Error handling callback")
+            await query.message.reply_text("⚠️ Something went wrong, check the logs.")
 
-    # --- рендеринг результата ---
+    # --- result rendering ---
     async def _render(self, reply, res, chat_id):
         if isinstance(res, AutoLogged):
             kb = undo_keyboard(res.log_id) if res.log_id else None
@@ -200,24 +200,24 @@ class TelegramBot:
             prompts[prompt.index] = prompt
             if grams_await is None and prompt.kind == "grams":
                 grams_await = prompt.index
-            # Уже показывали этот запрос в этом виде — не дублируем сообщение.
+            # Already shown this prompt in this form — don't duplicate the message.
             if sent.get(prompt.index) == prompt.kind:
                 continue
             await reply(msg.text, reply_markup=msg.keyboard)
             sent[prompt.index] = prompt.kind
-        # Текстовый ответ-число ждём для первого незакрытого grams-запроса.
+        # Await a numeric reply for the first still-open grams prompt.
         if grams_await is not None:
             self._awaiting[chat_id] = ("item_grams", res.session_id, grams_await)
 
     async def _finalize_and_render(self, reply, session_id, chat_id):
         res = await asyncio.to_thread(self.service.finalize, session_id)
         if isinstance(res, AutoLogged):
-            # Сессия закрыта — чистим состояние и показываем итог.
+            # Session closed — clear state and show the summary.
             self._sent.pop(session_id, None)
             self._prompts.pop(session_id, None)
             await self._render(reply, res, chat_id)
         else:
-            # Ещё есть незакрытые позиции — досылаем только новые запросы.
+            # Still-open items remain — send only the new prompts.
             await self._send_needs_input(reply, res, chat_id)
 
     def _find_serving(self, session_id, index, serving_id):

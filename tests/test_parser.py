@@ -1,6 +1,6 @@
 import json
 
-from fsai.parser import Parser
+from fatsecret_telegram_bridge.parser import Parser
 from tests.conftest import FakeProvider
 
 
@@ -36,7 +36,7 @@ def test_missing_grams_becomes_none():
     items = Parser(FakeProvider(payload)).parse("банан", [])
     assert items[0].grams is None
     assert items[0].confidence == 1.0
-    assert items[0].query_en is None      # query_en необязателен
+    assert items[0].query_en is None      # query_en is optional
 
 
 def test_empty_or_garbage_returns_empty_list():

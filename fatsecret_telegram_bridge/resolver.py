@@ -2,7 +2,7 @@ import logging
 from dataclasses import dataclass
 from typing import Union
 
-from fsai.models import (
+from fatsecret_telegram_bridge.models import (
     AliasRecord, FoodCandidate, ParsedItem, ResolvedItem, Serving,
 )
 
@@ -45,15 +45,15 @@ class Resolver:
 
     def resolve(self, item: ParsedItem, meal: str) -> Resolution:
         if item.grams is None:
-            logger.info("'%s': граммы не указаны → спрашиваем", item.name)
+            logger.info("'%s': no grams given -> asking", item.name)
             return NeedsGrams(item)
         rec = self.store.get_alias(item.name)
         if rec is not None:
-            logger.info("'%s': найдено в таблице (food=%s) → %s г",
+            logger.info("'%s': found in table (food=%s) -> %s g",
                         item.name, rec.food_id, item.grams)
             return Resolved(self._to_resolved(item, rec, meal))
         search_term = item.query_en or item.name
-        logger.info("'%s': нет в таблице → поиск в FatSecret по %r",
+        logger.info("'%s': not in table -> searching FatSecret for %r",
                     item.name, search_term)
         candidates = self.client.search_foods(search_term)
         return NeedsFood(item, candidates, meal)
@@ -63,18 +63,18 @@ class Resolver:
         servings = self.client.get_servings(food_id)
         gram_servings = [s for s in servings if s.grams]
         if not gram_servings:
-            logger.info("'%s' (food=%s): нет порции в граммах → спрашиваем серию",
+            logger.info("'%s' (food=%s): no gram serving -> asking for a serving",
                         parsed.name, food_id)
             return NeedsServing(parsed, food_id, food_name, servings, meal)
-        # Предпочитаем «граммовую» порцию (measurement='g'): тогда grams=1 г/единица,
-        # number_of_units == граммы, и дневник показывает ровно заданные граммы.
+        # Prefer the "gram" serving (measurement='g'): then grams=1 g/unit,
+        # number_of_units == grams, and the diary shows exactly the given grams.
         chosen = next((s for s in gram_servings if s.is_gram), gram_servings[0])
         rec = AliasRecord(
             alias=parsed.name, food_id=food_id, serving_id=chosen.serving_id,
             grams_per_serving=chosen.grams, food_name=food_name,
         )
         self.store.save_alias(rec)
-        logger.info("'%s' → сохранён алиас: food=%s serving=%s (%s г/порция)",
+        logger.info("'%s' -> alias saved: food=%s serving=%s (%s g/unit)",
                     parsed.name, food_id, chosen.serving_id, chosen.grams)
         return Resolved(self._to_resolved(parsed, rec, meal))
 

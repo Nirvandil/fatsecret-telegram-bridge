@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 
 
 class LLMProvider(ABC):
-    """Минимальный интерфейс модели: вернуть текст ответа на пару system/user."""
+    """Minimal model interface: return the response text for a system/user pair."""
 
     @abstractmethod
     def complete(self, system: str, user: str) -> str:

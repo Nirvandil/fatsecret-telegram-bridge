@@ -1,8 +1,8 @@
 import pytest
 
-from fsai.llm.anthropic_provider import AnthropicProvider
-from fsai.llm.openai_provider import OpenAIProvider
-from fsai.llm.factory import build_provider
+from fatsecret_telegram_bridge.llm.anthropic_provider import AnthropicProvider
+from fatsecret_telegram_bridge.llm.openai_provider import OpenAIProvider
+from fatsecret_telegram_bridge.llm.factory import build_provider
 
 
 class FakeAnthropicMessages:

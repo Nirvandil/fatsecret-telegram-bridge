@@ -1,5 +1,5 @@
 import pytest
-from fsai.config import load_config
+from fatsecret_telegram_bridge.config import load_config
 
 
 def base_env():
@@ -26,7 +26,7 @@ def test_defaults_applied():
     cfg = load_config(base_env())
     assert cfg.llm_provider == "anthropic"
     assert cfg.llm_model == "claude-haiku-4-5"
-    assert cfg.db_path == "fsai.sqlite3"
+    assert cfg.db_path == "fatsecret_telegram_bridge.sqlite3"
     assert (cfg.meal_breakfast_start, cfg.meal_lunch_start,
             cfg.meal_dinner_start, cfg.meal_dinner_end) == (5, 11, 16, 22)
     assert cfg.log_level == "INFO"

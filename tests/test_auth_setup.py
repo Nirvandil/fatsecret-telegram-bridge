@@ -1,4 +1,4 @@
-from fsai.auth_setup import exchange_verifier
+from fatsecret_telegram_bridge.auth_setup import exchange_verifier
 
 
 class FakeFs:

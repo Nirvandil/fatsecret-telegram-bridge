@@ -1,17 +1,17 @@
-"""Точка входа: python -m fsai — запускает бота в режиме long-polling."""
+"""Entry point: python -m fatsecret_telegram_bridge — runs the bot in long-polling mode."""
 import asyncio
 import logging
 
 from dotenv import load_dotenv
 
-from fsai.bot import TelegramBot
-from fsai.config import load_config
-from fsai.fatsecret_client import FatSecretClient
-from fsai.llm.factory import build_provider
-from fsai.service import LoggerService
-from fsai.store import Store
+from fatsecret_telegram_bridge.bot import TelegramBot
+from fatsecret_telegram_bridge.config import load_config
+from fatsecret_telegram_bridge.fatsecret_client import FatSecretClient
+from fatsecret_telegram_bridge.llm.factory import build_provider
+from fatsecret_telegram_bridge.service import LoggerService
+from fatsecret_telegram_bridge.store import Store
 
-logger = logging.getLogger("fsai")
+logger = logging.getLogger("fatsecret_telegram_bridge")
 
 
 def _setup_logging(level: str) -> None:
@@ -20,7 +20,7 @@ def _setup_logging(level: str) -> None:
         format="%(asctime)s %(levelname)-7s %(name)s: %(message)s",
         datefmt="%H:%M:%S",
     )
-    # HTTP-клиент логирует каждый getUpdates-поллинг — это шум, глушим до WARNING.
+    # The HTTP client logs every getUpdates poll — that's noise, quiet it to WARNING.
     logging.getLogger("httpx").setLevel(logging.WARNING)
     logging.getLogger("httpcore").setLevel(logging.WARNING)
 
@@ -29,7 +29,7 @@ def main() -> None:
     load_dotenv()
     config = load_config()
     _setup_logging(config.log_level)
-    logger.info("LLM-провайдер: %s (%s)", config.llm_provider, config.llm_model)
+    logger.info("LLM provider: %s (%s)", config.llm_provider, config.llm_model)
 
     provider = build_provider(config)
     client = FatSecretClient(
@@ -45,16 +45,16 @@ def main() -> None:
     bot = TelegramBot(config, service)
     app = bot.build_application()
 
-    # Python 3.14: asyncio.get_event_loop() больше не создаёт цикл сам, а
-    # python-telegram-bot v21 в run_polling() на это рассчитывает. Создаём явно.
+    # Python 3.14: asyncio.get_event_loop() no longer creates a loop itself, but
+    # python-telegram-bot v21's run_polling() relies on that. Create one explicitly.
     try:
         asyncio.get_event_loop()
     except RuntimeError:
         asyncio.set_event_loop(asyncio.new_event_loop())
 
     logger.info(
-        "fsai запущен (long-polling: timeout=%ss, poll_interval=%ss, owner=%s). "
-        "Останов — Ctrl+C.",
+        "fatsecret_telegram_bridge started (long-polling: timeout=%ss, "
+        "poll_interval=%ss, owner=%s). Stop with Ctrl+C.",
         config.poll_timeout, config.poll_interval, config.owner_chat_id,
     )
     app.run_polling(

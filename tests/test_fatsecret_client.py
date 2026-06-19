@@ -1,8 +1,8 @@
 from decimal import Decimal
 from types import SimpleNamespace as NS
 
-from fsai.fatsecret_client import FatSecretClient
-from fsai.models import FoodCandidate, Serving
+from fatsecret_telegram_bridge.fatsecret_client import FatSecretClient
+from fatsecret_telegram_bridge.models import FoodCandidate, Serving
 
 
 class FakeFoods:
@@ -66,7 +66,7 @@ def test_search_foods_empty():
 
 
 def test_search_foods_filters_null_candidate():
-    # Для отсутствующих совпадений FatSecret возвращает «пустого» кандидата.
+    # For no matches FatSecret returns a single "empty" candidate.
     fake = FakeFs()
     fake.foods.search_return = [NS(food_id=None, food_name=None,
                                    food_description="")]
@@ -76,11 +76,11 @@ def test_search_foods_filters_null_candidate():
 def test_get_servings_computes_grams_per_unit_and_gram_flag():
     fake = FakeFs()
     fake.foods.food_return = NS(servings=NS(serving=[
-        # «100 g»: number_of_units=100 → граммов на единицу = 100/100 = 1.0
+        # "100 g": number_of_units=100 -> grams per unit = 100/100 = 1.0
         NS(serving_id=10, serving_description="100 g",
            metric_serving_amount=Decimal("100.0"), metric_serving_unit="g",
            number_of_units=Decimal("100.0"), measurement_description="g"),
-        # «1 cup»: number_of_units=1 → граммов на единицу = 152/1 = 152.0
+        # "1 cup": number_of_units=1 -> grams per unit = 152/1 = 152.0
         NS(serving_id=11, serving_description="1 cup",
            metric_serving_amount=Decimal("152.0"), metric_serving_unit="g",
            number_of_units=Decimal("1.0"), measurement_description="cup"),
@@ -116,7 +116,7 @@ def test_create_entry_returns_id_from_call_and_passes_args():
     assert params["serving_id"] == "62421"
     assert params["number_of_units"] == 2.0
     assert params["meal"] == "lunch"
-    assert "date" not in params          # date=None опускается
+    assert "date" not in params          # date=None is omitted
 
 
 def test_create_entry_missing_id_returns_empty_string():

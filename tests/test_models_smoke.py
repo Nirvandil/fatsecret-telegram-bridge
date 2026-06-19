@@ -1,4 +1,4 @@
-from fsai.models import (
+from fatsecret_telegram_bridge.models import (
     ParsedItem, FoodCandidate, Serving, AliasRecord, ResolvedItem,
 )
 

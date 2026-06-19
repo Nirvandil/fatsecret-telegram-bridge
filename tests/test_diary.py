@@ -1,7 +1,7 @@
 from datetime import datetime
 
-from fsai.diary import infer_meal, units_for, Diary
-from fsai.models import ResolvedItem
+from fatsecret_telegram_bridge.diary import infer_meal, units_for, Diary
+from fatsecret_telegram_bridge.models import ResolvedItem
 
 
 def test_units_for():
@@ -17,7 +17,7 @@ def test_infer_meal_boundaries():
     assert at(19) == "dinner"
     assert at(23) == "other"
     assert at(3) == "other"
-    # границы включительно слева
+    # left-inclusive boundaries
     assert at(5) == "breakfast"
     assert at(11) == "lunch"
     assert at(16) == "dinner"

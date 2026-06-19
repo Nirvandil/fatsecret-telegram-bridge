@@ -4,10 +4,10 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Callable, Optional, Union
 
-from fsai.diary import Diary, infer_meal
-from fsai.models import FoodCandidate, ParsedItem, ResolvedItem, Serving
-from fsai.parser import Parser
-from fsai.resolver import (
+from fatsecret_telegram_bridge.diary import Diary, infer_meal
+from fatsecret_telegram_bridge.models import FoodCandidate, ParsedItem, ResolvedItem, Serving
+from fatsecret_telegram_bridge.parser import Parser
+from fatsecret_telegram_bridge.resolver import (
     Resolver, Resolved, NeedsGrams, NeedsFood, NeedsServing,
 )
 
@@ -62,10 +62,10 @@ class LoggerService:
         self.meal_bounds = meal_bounds
         self._sessions: dict[str, _Session] = {}
 
-    # --- основной вход ---
+    # --- main entry ---
     def process_text(self, text: str) -> ProcessResult:
         meal = infer_meal(self.clock(), *self.meal_bounds)
-        logger.info("process_text: %r (приём пищи по времени: %s)", text, meal)
+        logger.info("process_text: %r (meal by time: %s)", text, meal)
         items = self.parser.parse(text, self.store.all_alias_names())
         resolved: dict[int, ResolvedItem] = {}
         pending: dict[int, PendingPrompt] = {}
@@ -75,13 +75,13 @@ class LoggerService:
         session = _Session(str(uuid.uuid4()), text, meal, resolved, pending)
         if pending:
             self._sessions[session.session_id] = session
-            logger.info("Нужен ввод по %s позициям, авто-разрешено %s "
+            logger.info("Input needed for %s items, auto-resolved %s "
                         "(session=%s)", len(pending), len(resolved),
                         session.session_id)
             return NeedsInput(session.session_id, list(pending.values()))
         return self._finalize_session(session)
 
-    # --- колбэки уточнения ---
+    # --- clarification callbacks ---
     def choose_food(self, session_id: str, index: int, food_id: str,
                     food_name: Optional[str] = None) -> None:
         session = self._sessions[session_id]
@@ -126,15 +126,15 @@ class LoggerService:
             return 0
         rec = self.store.get_log(log_id)
         if not rec:
-            logger.warning("undo: log_id=%s не найден", log_id)
+            logger.warning("undo: log_id=%s not found", log_id)
             return 0
-        logger.info("undo log_id=%s: удаляю %s записей",
+        logger.info("undo log_id=%s: deleting %s entries",
                     log_id, len(rec["entry_ids"]))
         for eid in rec["entry_ids"]:
             self.client.delete_entry(eid)
         return len(rec["entry_ids"])
 
-    # --- внутреннее ---
+    # --- internal ---
     def _record(self, index, parsed, res, resolved, pending) -> None:
         if isinstance(res, Resolved):
             resolved[index] = res.item
@@ -153,13 +153,13 @@ class LoggerService:
     def _finalize_session(self, session: _Session) -> AutoLogged:
         items = [session.resolved[i] for i in sorted(session.resolved)]
         if not items:
-            logger.info("Нечего записывать (0 разрешённых позиций)")
+            logger.info("Nothing to log (0 resolved items)")
             return AutoLogged(lines=[], log_id=None)
         entry_ids = self.diary.write(items)
         log_id = self.store.add_log(session.raw_text, entry_ids)
-        logger.info("Залогировано %s позиций, log_id=%s, entry_ids=%s",
+        logger.info("Logged %s items, log_id=%s, entry_ids=%s",
                     len(items), log_id, entry_ids)
         lines = [
-            f"{it.food_name} — {it.grams:g} г ({it.meal})" for it in items
+            f"{it.food_name} — {it.grams:g} g ({it.meal})" for it in items
         ]
         return AutoLogged(lines=lines, log_id=log_id)

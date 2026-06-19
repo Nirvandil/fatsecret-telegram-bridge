@@ -2,7 +2,7 @@ import logging
 from datetime import datetime
 from typing import Optional
 
-from fsai.models import ResolvedItem
+from fatsecret_telegram_bridge.models import ResolvedItem
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +32,7 @@ class Diary:
         ids: list[str] = []
         for it in items:
             n = units_for(it.grams, it.grams_per_serving)
-            logger.info("Запись в дневник: %s — %g г (%s), units=%g",
+            logger.info("Diary write: %s — %g g (%s), units=%g",
                         it.food_name, it.grams, it.meal, n)
             ids.append(self.client.create_entry(
                 it.food_id, it.food_name, it.serving_id, n, it.meal, date))

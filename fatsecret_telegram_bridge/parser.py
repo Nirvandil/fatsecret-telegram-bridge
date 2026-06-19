@@ -3,26 +3,27 @@ import logging
 import re
 from typing import Optional
 
-from fsai.llm.base import LLMProvider
-from fsai.models import ParsedItem
+from fatsecret_telegram_bridge.llm.base import LLMProvider
+from fatsecret_telegram_bridge.models import ParsedItem
 
 logger = logging.getLogger(__name__)
 
 SYSTEM_PROMPT = (
-    "Ты извлекаешь позиции питания из надиктованной фразы на русском. "
-    "Верни СТРОГО JSON-объект вида "
+    "You extract food items from a dictated meal phrase (the phrase may be in "
+    "any language, e.g. Russian). "
+    "Return STRICTLY a JSON object of the form "
     '{"items": [{"name": str, "query_en": str, "grams": number|null, '
     '"meal_hint": "breakfast"|"lunch"|"dinner"|"other"|null, '
     '"confidence": number}]}. '
-    "Никакого текста вне JSON. "
-    "name — название как сказал пользователь, по-русски. "
-    "query_en — короткий АНГЛИЙСКИЙ поисковый запрос для базы продуктов FatSecret "
-    "(US/English): обычное название продукта по-английски, например "
+    "No text outside the JSON. "
+    "name — the food as the user said it, in the original language. "
+    "query_en — a short ENGLISH search query for the FatSecret (US/English) food "
+    "database: the common English product name, e.g. "
     "'яблоки'→'apple', 'овсянка сухая'→'oatmeal dry', 'творог 5%'→'cottage cheese'. "
-    "Граммы — число в граммах, если можно их вычислить; иначе null. "
-    "Если в подсказке дан список известных названий, приводи name к наиболее "
-    "близкому из них (синонимы, падежи, опечатки); иначе оставляй как сказано. "
-    "confidence от 0 до 1."
+    "grams — a number in grams if it can be derived; otherwise null. "
+    "If a list of known names is provided, map name to the closest one "
+    "(synonyms, inflections, typos); otherwise keep it as said. "
+    "confidence is 0 to 1."
 )
 
 _FENCE_RE = re.compile(r"```(?:json)?\s*(.*?)\s*```", re.DOTALL)
@@ -34,14 +35,14 @@ class Parser:
         self.provider = provider
 
     def parse(self, text: str, known_aliases: list[str]) -> list[ParsedItem]:
-        logger.info("Парсинг текста (%s симв., %s известных алиасов)",
+        logger.info("Parsing text (%s chars, %s known aliases)",
                     len(text), len(known_aliases))
         user = self._build_user_prompt(text, known_aliases)
         raw = self.provider.complete(SYSTEM_PROMPT, user)
-        logger.debug("LLM сырой ответ: %s", raw)
+        logger.debug("LLM raw response: %s", raw)
         data = self._extract_json(raw)
         if not data or not isinstance(data.get("items"), list):
-            logger.warning("LLM не вернул валидный JSON с items")
+            logger.warning("LLM did not return valid JSON with items")
             return []
         items: list[ParsedItem] = []
         for it in data["items"]:
@@ -55,14 +56,14 @@ class Parser:
                 meal_hint=it.get("meal_hint") or None,
                 confidence=float(it.get("confidence", 1.0)),
             ))
-        logger.info("Распознано позиций: %s — %s",
+        logger.info("Parsed items: %s — %s",
                     len(items), [(i.name, i.grams) for i in items])
         return items
 
     @staticmethod
     def _build_user_prompt(text: str, known_aliases: list[str]) -> str:
-        known = ", ".join(known_aliases) if known_aliases else "(пусто)"
-        return f"Известные названия: {known}\n\nФраза: {text}"
+        known = ", ".join(known_aliases) if known_aliases else "(none)"
+        return f"Known names: {known}\n\nPhrase: {text}"
 
     @staticmethod
     def _extract_json(raw: str) -> Optional[dict]:

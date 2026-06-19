@@ -1,20 +1,20 @@
-from fsai.models import FoodCandidate, ParsedItem
-from fsai.service import AutoLogged, NeedsInput, PendingPrompt
-from fsai.bot import (
+from fatsecret_telegram_bridge.models import FoodCandidate, ParsedItem
+from fatsecret_telegram_bridge.service import AutoLogged, NeedsInput, PendingPrompt
+from fatsecret_telegram_bridge.bot import (
     format_autolog, food_keyboard, pack_cb, unpack_cb, build_needs_input_messages,
     TelegramBot,
 )
 
 
 def test_format_autolog_lists_items():
-    res = AutoLogged(lines=["Buckwheat — 200 г (lunch)"], log_id=7)
+    res = AutoLogged(lines=["Buckwheat — 200 g (lunch)"], log_id=7)
     text = format_autolog(res)
-    assert "Buckwheat — 200 г (lunch)" in text
-    assert "Записано" in text
+    assert "Buckwheat — 200 g (lunch)" in text
+    assert "Logged" in text
 
 
 def test_format_autolog_empty():
-    assert "не понял" in format_autolog(AutoLogged(lines=[], log_id=None)).lower()
+    assert "rephrase" in format_autolog(AutoLogged(lines=[], log_id=None)).lower()
 
 
 def test_callback_pack_unpack_roundtrip():
@@ -41,14 +41,14 @@ def test_food_keyboard_handles_empty_name():
         candidates=[FoodCandidate("7", "", "")],
     )
     btn = food_keyboard("s", prompt).inline_keyboard[0][0]
-    assert btn.text                      # подпись непустая
+    assert btn.text                      # label is non-empty
     assert btn.callback_data == pack_cb("food", "s", 0, "7")
 
 
 def test_build_needs_input_messages_for_grams():
     prompt = PendingPrompt(index=0, kind="grams", parsed=ParsedItem("гречка"))
     msgs = build_needs_input_messages("sess-1", NeedsInput("sess-1", [prompt]))
-    assert any("грамм" in m.text.lower() for m in msgs)
+    assert any("grams" in m.text.lower() for m in msgs)
 
 
 class _ReplyRecorder:
@@ -70,6 +70,6 @@ async def test_send_needs_input_does_not_duplicate_on_repeat():
     ])
     await bot._send_needs_input(reply, res, chat_id=1)
     assert len(reply.calls) == 2
-    # Повторная отправка тех же запросов (после resolve другого пункта) — без дублей.
+    # Re-sending the same prompts (after another item is resolved) — no duplicates.
     await bot._send_needs_input(reply, res, chat_id=1)
     assert len(reply.calls) == 2

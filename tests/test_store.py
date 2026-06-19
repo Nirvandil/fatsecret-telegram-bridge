@@ -1,7 +1,7 @@
 import threading
 
-from fsai.models import AliasRecord
-from fsai.store import Store
+from fatsecret_telegram_bridge.models import AliasRecord
+from fatsecret_telegram_bridge.store import Store
 
 
 def make_store(tmp_path):
@@ -50,8 +50,8 @@ def test_get_missing_log_returns_none(tmp_path):
 
 
 def test_store_usable_from_another_thread(tmp_path):
-    # Бот вызывает Store из воркер-потока (asyncio.to_thread); соединение
-    # создаётся в главном потоке — sqlite по умолчанию это запрещает.
+    # The bot calls Store from a worker thread (asyncio.to_thread); the
+    # connection is created in the main thread — sqlite forbids this by default.
     s = make_store(tmp_path)
     s.save_alias(AliasRecord("рис", "1", "2", 100.0, "Rice"))
     result = {}

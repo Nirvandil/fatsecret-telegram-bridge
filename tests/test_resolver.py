@@ -1,8 +1,8 @@
-from fsai.models import AliasRecord, FoodCandidate, ParsedItem, Serving
-from fsai.resolver import (
+from fatsecret_telegram_bridge.models import AliasRecord, FoodCandidate, ParsedItem, Serving
+from fatsecret_telegram_bridge.resolver import (
     Resolver, Resolved, NeedsGrams, NeedsFood, NeedsServing,
 )
-from fsai.store import Store
+from fatsecret_telegram_bridge.store import Store
 
 
 class FakeClient:
@@ -48,7 +48,7 @@ def test_unknown_triggers_search_by_english_query(tmp_path):
     assert isinstance(res, NeedsFood)
     assert res.candidates[0].food_id == "1"
     assert res.parsed.name == "греча"
-    assert c.last_query == "buckwheat"     # ищем по англоязычному запросу
+    assert c.last_query == "buckwheat"     # search by the English query
 
 
 def test_unknown_search_falls_back_to_name(tmp_path):
@@ -56,13 +56,13 @@ def test_unknown_search_falls_back_to_name(tmp_path):
     c.search_return = []
     r = Resolver(c, store(tmp_path))
     r.resolve(ParsedItem(name="греча", grams=200.0), meal="lunch")
-    assert c.last_query == "греча"         # query_en нет → ищем по name
+    assert c.last_query == "греча"         # no query_en -> search by name
 
 
 def test_confirm_food_prefers_gram_serving_and_saves_alias(tmp_path):
     s = store(tmp_path)
     c = FakeClient()
-    # Граммовая порция стоит ВТОРОЙ, но должна быть выбрана (is_gram=True).
+    # The gram serving is SECOND but must be chosen (is_gram=True).
     c.servings_return = [
         Serving("99", "1 cup", 152.0, "g", is_gram=False),
         Serving("100", "100 g", 1.0, "g", is_gram=True),
@@ -78,7 +78,7 @@ def test_confirm_food_prefers_gram_serving_and_saves_alias(tmp_path):
 
 
 def test_confirm_food_falls_back_to_first_gram_serving(tmp_path):
-    # Нет «g»-порции → берём первую порцию в граммах.
+    # No "g" serving -> take the first gram serving.
     c = FakeClient()
     c.servings_return = [Serving("99", "1 cup", 152.0, "g", is_gram=False)]
     r = Resolver(c, store(tmp_path))

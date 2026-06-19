@@ -1,6 +1,6 @@
-from fsai.llm.base import LLMProvider
-from fsai.llm.anthropic_provider import AnthropicProvider
-from fsai.llm.openai_provider import OpenAIProvider
+from fatsecret_telegram_bridge.llm.base import LLMProvider
+from fatsecret_telegram_bridge.llm.anthropic_provider import AnthropicProvider
+from fatsecret_telegram_bridge.llm.openai_provider import OpenAIProvider
 
 
 def build_provider(config) -> LLMProvider:

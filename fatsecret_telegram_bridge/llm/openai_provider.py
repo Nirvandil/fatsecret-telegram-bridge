@@ -1,4 +1,4 @@
-from fsai.llm.base import LLMProvider
+from fatsecret_telegram_bridge.llm.base import LLMProvider
 
 
 class OpenAIProvider(LLMProvider):
