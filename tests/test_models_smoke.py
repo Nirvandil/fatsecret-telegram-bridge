@@ -5,20 +5,28 @@ from fatsecret_telegram_bridge.models import (
 
 def test_parsed_item_defaults():
     item = ParsedItem(name="гречка")
-    assert item.grams is None
-    assert item.meal_hint is None
+    assert item.quantity is None and item.unit is None
+    assert item.query_en is None
     assert item.confidence == 1.0
 
 
 def test_resolved_item_fields():
     r = ResolvedItem(
-        alias="гречка", food_id="11", serving_id="22",
-        food_name="Buckwheat, cooked", grams=200.0,
-        grams_per_serving=100.0, meal="lunch",
+        alias="гречка", food_id="11", food_name="Buckwheat, cooked",
+        serving_id="22", number_of_units=200.0, unit="g", meal="lunch",
     )
-    assert r.grams == 200.0 and r.meal == "lunch"
+    assert r.number_of_units == 200.0 and r.unit == "g" and r.meal == "lunch"
 
 
-def test_serving_optional_grams():
-    s = Serving(serving_id="1", description="1 cup", grams=None, metric_unit=None)
-    assert s.grams is None
+def test_serving_fields():
+    s = Serving(serving_id="1", description="1 cup", measurement="cup")
+    assert s.measurement == "cup"
+
+
+def test_alias_record_fields():
+    a = AliasRecord("гречка", "11", "Buckwheat")
+    assert a.food_id == "11" and a.food_name == "Buckwheat"
+
+
+def test_food_candidate_default_description():
+    assert FoodCandidate("1", "Rice").description == ""

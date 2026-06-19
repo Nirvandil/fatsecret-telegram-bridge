@@ -5,10 +5,12 @@ from datetime import datetime
 from typing import Callable, Optional, Union
 
 from fatsecret_telegram_bridge.diary import Diary, infer_meal
-from fatsecret_telegram_bridge.models import FoodCandidate, ParsedItem, ResolvedItem, Serving
-from fatsecret_telegram_bridge.parser import Parser
+from fatsecret_telegram_bridge.models import (
+    FoodCandidate, ParsedItem, ResolvedItem, Serving,
+)
+from fatsecret_telegram_bridge.parser import Parser, RegexParser
 from fatsecret_telegram_bridge.resolver import (
-    Resolver, Resolved, NeedsGrams, NeedsFood, NeedsServing,
+    Resolver, Resolved, NeedsFood, NeedsServing, NeedsQuantity,
 )
 
 logger = logging.getLogger(__name__)
@@ -17,12 +19,14 @@ logger = logging.getLogger(__name__)
 @dataclass
 class PendingPrompt:
     index: int
-    kind: str                      # "food" | "grams" | "serving"
+    kind: str                      # "food" | "serving" | "quantity"
     parsed: ParsedItem
     candidates: list[FoodCandidate] = field(default_factory=list)
     servings: list[Serving] = field(default_factory=list)
     food_id: Optional[str] = None
     food_name: Optional[str] = None
+    serving_id: Optional[str] = None
+    unit: Optional[str] = None
 
 
 @dataclass
@@ -53,7 +57,8 @@ class LoggerService:
     def __init__(self, provider, client, store,
                  clock: Callable[[], datetime] = datetime.now,
                  meal_bounds: tuple[int, int, int, int] = (5, 11, 16, 22)):
-        self.parser = Parser(provider)
+        # provider is None -> no LLM, use the regex parser (no translation).
+        self.parser = RegexParser() if provider is None else Parser(provider)
         self.client = client
         self.store = store
         self.resolver = Resolver(client, store)
@@ -70,14 +75,12 @@ class LoggerService:
         resolved: dict[int, ResolvedItem] = {}
         pending: dict[int, PendingPrompt] = {}
         for idx, item in enumerate(items):
-            res = self.resolver.resolve(item, meal)
-            self._record(idx, item, res, resolved, pending)
+            self._record(idx, self.resolver.resolve(item, meal), resolved, pending)
         session = _Session(str(uuid.uuid4()), text, meal, resolved, pending)
         if pending:
             self._sessions[session.session_id] = session
-            logger.info("Input needed for %s items, auto-resolved %s "
-                        "(session=%s)", len(pending), len(resolved),
-                        session.session_id)
+            logger.info("Input needed for %s items, auto-resolved %s (session=%s)",
+                        len(pending), len(resolved), session.session_id)
             return NeedsInput(session.session_id, list(pending.values()))
         return self._finalize_session(session)
 
@@ -93,26 +96,26 @@ class LoggerService:
             )
         res = self.resolver.confirm_food(prompt.parsed, food_id, food_name,
                                          session.meal)
-        self._record(index, prompt.parsed, res, session.resolved,
-                     session.pending)
+        self._record(index, res, session.resolved, session.pending)
 
-    def set_grams(self, session_id: str, index: int, grams: float) -> None:
+    def choose_serving(self, session_id: str, index: int, serving_id: str) -> None:
         session = self._sessions[session_id]
         prompt = session.pending[index]
-        prompt.parsed.grams = grams
-        res = self.resolver.resolve(prompt.parsed, session.meal)
-        self._record(index, prompt.parsed, res, session.resolved,
-                     session.pending)
+        serving = next((s for s in prompt.servings if s.serving_id == serving_id),
+                       None)
+        if serving is None:
+            return
+        res = self.resolver.choose_serving(prompt.parsed, prompt.food_id,
+                                           prompt.food_name, serving, session.meal)
+        self._record(index, res, session.resolved, session.pending)
 
-    def choose_serving(self, session_id: str, index: int, serving: Serving,
-                       grams_per_serving: float) -> None:
+    def set_quantity(self, session_id: str, index: int, quantity: float) -> None:
         session = self._sessions[session_id]
         prompt = session.pending[index]
-        res = self.resolver.confirm_serving(
-            prompt.parsed, prompt.food_id, prompt.food_name, serving,
-            grams_per_serving, session.meal)
-        self._record(index, prompt.parsed, res, session.resolved,
-                     session.pending)
+        res = self.resolver.set_quantity(
+            prompt.parsed, prompt.food_id, prompt.food_name, prompt.serving_id,
+            prompt.unit, quantity, session.meal)
+        self._record(index, res, session.resolved, session.pending)
 
     def finalize(self, session_id: str) -> ProcessResult:
         session = self._sessions[session_id]
@@ -135,20 +138,24 @@ class LoggerService:
         return len(rec["entry_ids"])
 
     # --- internal ---
-    def _record(self, index, parsed, res, resolved, pending) -> None:
+    def _record(self, index, res, resolved, pending) -> None:
         if isinstance(res, Resolved):
             resolved[index] = res.item
             pending.pop(index, None)
-        elif isinstance(res, NeedsGrams):
-            pending[index] = PendingPrompt(index, "grams", parsed)
         elif isinstance(res, NeedsFood):
-            pending[index] = PendingPrompt(index, "food", parsed,
+            pending[index] = PendingPrompt(index, "food", res.parsed,
                                            candidates=res.candidates)
         elif isinstance(res, NeedsServing):
-            pending[index] = PendingPrompt(index, "serving", parsed,
+            pending[index] = PendingPrompt(index, "serving", res.parsed,
                                            servings=res.servings,
                                            food_id=res.food_id,
                                            food_name=res.food_name)
+        elif isinstance(res, NeedsQuantity):
+            pending[index] = PendingPrompt(index, "quantity", res.parsed,
+                                           food_id=res.food_id,
+                                           food_name=res.food_name,
+                                           serving_id=res.serving_id,
+                                           unit=res.unit)
 
     def _finalize_session(self, session: _Session) -> AutoLogged:
         items = [session.resolved[i] for i in sorted(session.resolved)]
@@ -159,7 +166,6 @@ class LoggerService:
         log_id = self.store.add_log(session.raw_text, entry_ids)
         logger.info("Logged %s items, log_id=%s, entry_ids=%s",
                     len(items), log_id, entry_ids)
-        lines = [
-            f"{it.food_name} — {it.grams:g} g ({it.meal})" for it in items
-        ]
+        lines = [f"{it.food_name} — {it.number_of_units:g} {it.unit} ({it.meal})"
+                 for it in items]
         return AutoLogged(lines=lines, log_id=log_id)

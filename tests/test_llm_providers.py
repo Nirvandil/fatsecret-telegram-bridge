@@ -78,6 +78,14 @@ def test_factory_selects_by_config(monkeypatch):
     assert isinstance(build_provider(Cfg()), AnthropicProvider)
 
 
+def test_factory_none_returns_none():
+    class Cfg:
+        llm_provider = "none"
+        llm_model = ""
+        llm_api_key = ""
+    assert build_provider(Cfg()) is None
+
+
 def test_factory_rejects_unknown_provider():
     class Cfg:
         llm_provider = "llama"

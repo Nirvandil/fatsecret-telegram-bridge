@@ -39,72 +39,91 @@ def build(tmp_path, provider, client, now_hour=13):
 
 def test_all_known_items_autolog(tmp_path):
     payload = json.dumps({"items": [
-        {"name": "гречка", "grams": 200, "confidence": 0.95},
-        {"name": "филе", "grams": 150, "confidence": 0.95},
+        {"name": "rice", "quantity": 200, "unit": "g"},
+        {"name": "chicken", "quantity": 6, "unit": "oz"},
     ]})
     client = FakeClient()
+    client.servings_return = [Serving("22", "100 g", "g"), Serving("23", "1 oz", "oz")]
     svc, store = build(tmp_path, FakeProvider(payload), client)
-    store.save_alias(AliasRecord("гречка", "11", "22", 100.0, "Buckwheat"))
-    store.save_alias(AliasRecord("филе", "33", "44", 100.0, "Chicken"))
+    store.save_alias(AliasRecord("rice", "11", "Rice"))
+    store.save_alias(AliasRecord("chicken", "33", "Chicken"))
 
-    res = svc.process_text("греча 200г, филе 150г")
+    res = svc.process_text("rice 200g, chicken 6oz")
 
     assert isinstance(res, AutoLogged)
-    assert len(client.created) == 2
-    assert client.created[0] == ("11", "22", 2.0, "lunch")
+    assert client.created == [("11", "22", 200.0, "lunch"),
+                              ("33", "23", 6.0, "lunch")]
     assert store.get_log(res.log_id)["entry_ids"] == ["e1", "e2"]
 
 
-def test_unknown_item_needs_input_then_finalize(tmp_path):
-    payload = json.dumps({"items": [{"name": "греча", "grams": 200, "confidence": 0.9}]})
+def test_unknown_item_pick_food_then_autolog(tmp_path):
+    payload = json.dumps({"items": [
+        {"name": "греча", "query_en": "buckwheat", "quantity": 200, "unit": "g"}]})
     client = FakeClient()
     client.search_return = [FoodCandidate("1", "Buckwheat", "Per 100g")]
-    client.servings_return = [Serving("100", "100 g", 100.0, "g")]
+    client.servings_return = [Serving("100", "100 g", "g")]
     svc, store = build(tmp_path, FakeProvider(payload), client)
 
-    res = svc.process_text("греча 200г")
+    res = svc.process_text("греча 200g")
     assert isinstance(res, NeedsInput)
-    prompt = res.pending[0]
-    assert prompt.kind == "food"
-    assert prompt.candidates[0].food_id == "1"
+    assert res.pending[0].kind == "food"
+    assert res.pending[0].candidates[0].food_id == "1"
 
-    svc.choose_food(res.session_id, prompt.index, "1", "Buckwheat")
+    svc.choose_food(res.session_id, res.pending[0].index, "1")
     final = svc.finalize(res.session_id)
     assert isinstance(final, AutoLogged)
-    assert client.created == [("1", "100", 2.0, "lunch")]
+    assert client.created == [("1", "100", 200.0, "lunch")]
     assert store.get_alias("греча").food_id == "1"
 
 
-def test_missing_grams_needs_input(tmp_path):
-    payload = json.dumps({"items": [{"name": "гречка"}]})
+def test_no_unit_asks_serving_then_autolog(tmp_path):
+    payload = json.dumps({"items": [{"name": "rice", "quantity": 200}]})
     client = FakeClient()
+    client.servings_return = [Serving("22", "100 g", "g"), Serving("23", "1 cup", "cup")]
     svc, store = build(tmp_path, FakeProvider(payload), client)
-    store.save_alias(AliasRecord("гречка", "11", "22", 100.0, "Buckwheat"))
+    store.save_alias(AliasRecord("rice", "11", "Rice"))
 
-    res = svc.process_text("гречка")
+    res = svc.process_text("rice 200")
     assert isinstance(res, NeedsInput)
-    assert res.pending[0].kind == "grams"
+    assert res.pending[0].kind == "serving"
 
-    svc.set_grams(res.session_id, res.pending[0].index, 250.0)
+    svc.choose_serving(res.session_id, res.pending[0].index, "22")
     final = svc.finalize(res.session_id)
     assert isinstance(final, AutoLogged)
-    assert client.created[0] == ("11", "22", 2.5, "lunch")
+    assert client.created == [("11", "22", 200.0, "lunch")]
+
+
+def test_unit_without_quantity_asks_quantity_then_autolog(tmp_path):
+    payload = json.dumps({"items": [{"name": "rice", "unit": "cup"}]})
+    client = FakeClient()
+    client.servings_return = [Serving("23", "1 cup", "cup")]
+    svc, store = build(tmp_path, FakeProvider(payload), client)
+    store.save_alias(AliasRecord("rice", "11", "Rice"))
+
+    res = svc.process_text("rice, a cup")
+    assert isinstance(res, NeedsInput)
+    assert res.pending[0].kind == "quantity"
+
+    svc.set_quantity(res.session_id, res.pending[0].index, 2.0)
+    final = svc.finalize(res.session_id)
+    assert isinstance(final, AutoLogged)
+    assert client.created == [("11", "23", 2.0, "lunch")]
 
 
 def test_empty_parse_returns_autologged_with_no_entries(tmp_path):
     client = FakeClient()
     svc, _ = build(tmp_path, FakeProvider(json.dumps({"items": []})), client)
-    res = svc.process_text("бессмыслица")
+    res = svc.process_text("nonsense")
     assert isinstance(res, AutoLogged) and res.log_id is None
     assert client.created == []
 
 
 def test_undo_deletes_entries(tmp_path):
-    payload = json.dumps({"items": [{"name": "гречка", "grams": 200}]})
+    payload = json.dumps({"items": [{"name": "rice", "quantity": 200, "unit": "g"}]})
     client = FakeClient()
+    client.servings_return = [Serving("22", "100 g", "g")]
     svc, store = build(tmp_path, FakeProvider(payload), client)
-    store.save_alias(AliasRecord("гречка", "11", "22", 100.0, "Buckwheat"))
-    res = svc.process_text("гречка 200")
-    count = svc.undo(res.log_id)
-    assert count == 1
+    store.save_alias(AliasRecord("rice", "11", "Rice"))
+    res = svc.process_text("rice 200g")
+    assert svc.undo(res.log_id) == 1
     assert client.deleted == ["e1"]

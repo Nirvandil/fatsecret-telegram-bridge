@@ -19,7 +19,8 @@ You type in Telegram ──▶ text ──▶ [LLM: parse + translate to English
 
 - **Text in, no STT service:** the bot only ever receives text. Type it, or use your phone keyboard's built-in voice-to-text (e.g. Gboard's mic) to dictate it into the message field — either way the bot just gets text, so no separate speech-to-text service is needed.
 - **Personal food table grows organically:** the first time you mention a food, the bot searches FatSecret and shows candidates as buttons; you tap one, and the mapping (your name → FatSecret food + serving) is saved forever. Next time it's logged instantly.
-- **LLM does parsing + translation:** it turns natural speech into structured `{food, grams}` pairs *and* produces an English search term, because the free FatSecret tier only exposes the **US/English** food database (see [Limitations](#limitations)).
+- **LLM does parsing + translation (optional):** it turns natural speech into structured `{food, quantity, unit}` items *and* produces an English search term, because the free FatSecret tier only exposes the **US/English** food database (see [Limitations](#limitations)). The LLM is optional — set `LLM_PROVIDER=none` to run key-free with a simple regex parser (structured `name quantity unit` input, no translation).
+- **Any unit, not just grams:** log in whatever unit FatSecret offers for a food — `200 g`, `6 oz`, `1 cup`, `2 slices`, `1 piece`. The serving is matched to your unit per message; grams are not forced.
 - **Undo:** every auto-logged message comes with an inline "↩ Undo" button.
 
 ---
@@ -27,10 +28,12 @@ You type in Telegram ──▶ text ──▶ [LLM: parse + translate to English
 ## Features
 
 - Natural-language meal logging in any language (parsed + translated by the LLM).
+- **Optional LLM** — pluggable **Anthropic** / **OpenAI**, or **none** (no key, regex parser) for English/structured input.
+- **Any unit:** grams, oz, cup, tbsp, slice, piece — logged in the food's own serving, no forced grams conversion.
 - Organic personal mapping table — no upfront data entry.
-- Confirm-only-when-uncertain: known foods with explicit grams are logged immediately; unknown/ambiguous ones ask for a one-tap choice.
+- Confirm-only-when-uncertain: known foods are logged immediately; unknown/ambiguous ones ask for a one-tap choice.
 - Automatic meal assignment by time of day (configurable), per-entry undo.
-- Pluggable LLM provider: **Anthropic** or **OpenAI**.
+- **Optional localized food DB** via `FATSECRET_REGION`/`LANGUAGE` (FatSecret Premier).
 - Runs entirely on FatSecret's **free** Basic tier (5000 calls/day).
 - SQLite for state, long-polling (no public webhook/HTTPS endpoint required).
 
@@ -43,7 +46,7 @@ You'll need four things (all have free options):
 1. **Python 3.11+**
 2. **A Telegram bot token** — create a bot via [@BotFather](https://t.me/BotFather).
 3. **FatSecret API credentials (OAuth 1.0)** — register at the [FatSecret Platform](https://platform.fatsecret.com/platform-api). The free *Basic* plan includes food-diary read/write.
-4. **An LLM API key** — either [Anthropic](https://console.anthropic.com/) or [OpenAI](https://platform.openai.com/). Cost is a fraction of a cent per message.
+4. **An LLM API key (optional)** — [Anthropic](https://console.anthropic.com/) or [OpenAI](https://platform.openai.com/); a fraction of a cent per message. Skip it with `LLM_PROVIDER=none` if you'll type structured English (`name quantity unit`) and don't need translation.
 
 ---
 
@@ -95,9 +98,10 @@ Open `.env` and fill in the values:
 | `OWNER_CHAT_ID` | Your chat id (positive for private, negative for group) |
 | `FATSECRET_CONSUMER_KEY` / `FATSECRET_CONSUMER_SECRET` | FatSecret OAuth 1.0 app credentials |
 | `FATSECRET_ACCESS_TOKEN` / `FATSECRET_ACCESS_SECRET` | Filled in step 6 |
-| `LLM_PROVIDER` | `anthropic` or `openai` |
-| `LLM_MODEL` | e.g. `claude-haiku-4-5` or `gpt-4o-mini` |
-| `LLM_API_KEY` | Your Anthropic/OpenAI key |
+| `FATSECRET_REGION` / `FATSECRET_LANGUAGE` | Optional, e.g. `DE` / `de` — localized food DB (Premier only; free tier ignores) |
+| `LLM_PROVIDER` | `anthropic`, `openai`, or `none` (no LLM, regex parser) |
+| `LLM_MODEL` | e.g. `claude-haiku-4-5` or `gpt-4o-mini` (ignored when `none`) |
+| `LLM_API_KEY` | Your Anthropic/OpenAI key (leave empty when `none`) |
 | `DB_PATH` | SQLite file path (default `fatsecret_telegram_bridge.sqlite3`) |
 | `TZ` | Your timezone, e.g. `Europe/Berlin` |
 | `MEAL_*` | Hour boundaries for breakfast/lunch/dinner |
@@ -128,11 +132,10 @@ You should see `fatsecret_telegram_bridge started (long-polling…)`. Now messag
 
 ## Using it
 
-- **Type** a meal in Telegram — or use your keyboard's voice-to-text (e.g. Gboard's mic) to dictate it:
-  *"buckwheat 200g, low-fat cottage cheese 150g, 1 banana"*.
-- For each **new** food, the bot replies with FatSecret candidates as buttons — tap the right one. The choice is saved to your personal table, so it's never asked again.
-- **Known** foods with explicit grams are logged immediately, with a **↩ Undo** button.
-- If you didn't give grams, the bot asks for a number.
+- **Type** a meal in Telegram — or use your keyboard's voice-to-text (e.g. Gboard's mic) to dictate it. Units are flexible: *"buckwheat 200 g, chicken 6 oz, rice 1 cup, 2 eggs"*.
+- For each **new** food, the bot replies with FatSecret candidates as buttons — tap the right one. The food is saved to your personal table, so it's never asked again.
+- **Known** foods with a clear quantity and unit are logged immediately, with a **↩ Undo** button.
+- If you gave no unit, the bot asks which serving (g, oz, cup, …); if no quantity, it asks for a number.
 - Meal (breakfast/lunch/dinner/other) is inferred from the current time; tune the boundaries in `.env`.
 
 The whole flow is logged to the console — set `LOG_LEVEL=DEBUG` to also see the raw LLM responses.
@@ -174,11 +177,12 @@ Architecture (small, focused modules under `fatsecret_telegram_bridge/`):
 
 | Module | Responsibility |
 |---|---|
-| `parser.py` + `llm/` | Text → structured items via a pluggable `LLMProvider` |
+| `parser.py` + `llm/` | Text → structured items: `Parser` (LLM, with translation) or `RegexParser` (no LLM) |
+| `units.py` | Normalize a unit string ("grams"/"г" → "g", "ounce" → "oz") for serving matching |
 | `fatsecret_client.py` | Thin wrapper over the `fatsecret` library (search / servings / create / delete) |
-| `resolver.py` | Map a parsed item to a FatSecret food + serving (table lookup or search) |
-| `diary.py` | Meal inference, units math, diary writes |
-| `service.py` | Orchestration: parse → resolve → auto-log or ask; undo |
+| `resolver.py` | Map a parsed item to a FatSecret food + serving (table lookup or search), matching the unit |
+| `diary.py` | Meal inference and diary writes |
+| `service.py` | Orchestration: parse → resolve → auto-log or ask (food / serving / quantity); undo |
 | `bot.py` | Telegram adapter (handlers, inline keyboards, rendering) |
 | `store.py` | SQLite: alias table + entry log |
 | `auth_setup.py` | One-time 3-legged OAuth helper |

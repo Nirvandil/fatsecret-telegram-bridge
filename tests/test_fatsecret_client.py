@@ -1,4 +1,3 @@
-from decimal import Decimal
 from types import SimpleNamespace as NS
 
 from fatsecret_telegram_bridge.fatsecret_client import FatSecretClient
@@ -12,12 +11,13 @@ class FakeFoods:
         self.last_search = None
         self.last_get = None
 
-    def search_v1(self, search_expression=None, max_results=None, page_number=None):
-        self.last_search = (search_expression, max_results)
+    def search_v1(self, search_expression=None, max_results=None,
+                  page_number=None, region=None, language=None):
+        self.last_search = (search_expression, max_results, region, language)
         return self.search_return
 
-    def get_v2(self, food_id):
-        self.last_get = food_id
+    def get_v2(self, food_id, region=None, language=None):
+        self.last_get = (food_id, region, language)
         return self.food_return
 
 
@@ -41,9 +41,11 @@ class FakeFs:
         return self.call_return
 
 
-def make_client(fake):
+def make_client(fake, region=None, language=None):
     c = FatSecretClient.__new__(FatSecretClient)
     c._fs = fake
+    c._region = region
+    c._language = language
     return c
 
 
@@ -56,7 +58,7 @@ def test_search_foods_maps_models_to_candidates():
     out = make_client(fake).search_foods("buckwheat", max_results=5)
     assert out[0] == FoodCandidate("1", "Buckwheat", "Per 100g")
     assert out[1] == FoodCandidate("2", "Rice", "")
-    assert fake.foods.last_search == ("buckwheat", 5)
+    assert fake.foods.last_search == ("buckwheat", 5, None, None)
 
 
 def test_search_foods_empty():
@@ -73,21 +75,24 @@ def test_search_foods_filters_null_candidate():
     assert make_client(fake).search_foods("яблоки") == []
 
 
-def test_get_servings_computes_grams_per_unit_and_gram_flag():
+def test_region_language_passed_through():
+    fake = FakeFs()
+    make_client(fake, region="DE", language="de").search_foods("milch")
+    assert fake.foods.last_search[2:] == ("DE", "de")
+
+
+def test_get_servings_maps_measurement():
     fake = FakeFs()
     fake.foods.food_return = NS(servings=NS(serving=[
-        # "100 g": number_of_units=100 -> grams per unit = 100/100 = 1.0
-        NS(serving_id=10, serving_description="100 g",
-           metric_serving_amount=Decimal("100.0"), metric_serving_unit="g",
-           number_of_units=Decimal("100.0"), measurement_description="g"),
-        # "1 cup": number_of_units=1 -> grams per unit = 152/1 = 152.0
-        NS(serving_id=11, serving_description="1 cup",
-           metric_serving_amount=Decimal("152.0"), metric_serving_unit="g",
-           number_of_units=Decimal("1.0"), measurement_description="cup"),
+        NS(serving_id=10, serving_description="100 g", measurement_description="g"),
+        NS(serving_id=11, serving_description="1 oz", measurement_description="oz"),
+        NS(serving_id=12, serving_description='1 medium (1-1/4" dia)',
+           measurement_description='medium (1-1/4" dia)'),
     ]))
     out = make_client(fake).get_servings("1")
-    assert out[0] == Serving("10", "100 g", 1.0, "g", is_gram=True)
-    assert out[1] == Serving("11", "1 cup", 152.0, "g", is_gram=False)
+    assert out[0] == Serving("10", "100 g", "g")
+    assert out[1] == Serving("11", "1 oz", "oz")
+    assert out[2] == Serving("12", '1 medium (1-1/4" dia)', "medium")
 
 
 def test_get_servings_handles_none_food():
@@ -105,7 +110,7 @@ def test_get_servings_handles_none_servings():
 def test_create_entry_returns_id_from_call_and_passes_args():
     fake = FakeFs()
     fake.call_return = {"food_entry_id": {"value": "9001"}}
-    eid = make_client(fake).create_entry("39690", "Buckwheat", "62421", 2.0,
+    eid = make_client(fake).create_entry("39690", "Buckwheat", "62421", 6.0,
                                          "lunch", None)
     assert eid == "9001"
     params, method = fake.calls[0]
@@ -114,7 +119,7 @@ def test_create_entry_returns_id_from_call_and_passes_args():
     assert params["food_id"] == "39690"
     assert params["food_entry_name"] == "Buckwheat"
     assert params["serving_id"] == "62421"
-    assert params["number_of_units"] == 2.0
+    assert params["number_of_units"] == 6.0
     assert params["meal"] == "lunch"
     assert "date" not in params          # date=None is omitted
 

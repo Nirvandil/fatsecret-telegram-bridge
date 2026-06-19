@@ -59,7 +59,7 @@ def food_keyboard(session_id: str, prompt: PendingPrompt) -> InlineKeyboardMarku
 
 def serving_keyboard(session_id: str, prompt: PendingPrompt) -> InlineKeyboardMarkup:
     rows = [[InlineKeyboardButton(
-        s.description or s.serving_id,
+        (s.description or s.measurement or s.serving_id)[:100],
         callback_data=pack_cb("serv", session_id, prompt.index, s.serving_id))]
         for s in prompt.servings]
     return InlineKeyboardMarkup(rows)
@@ -75,22 +75,21 @@ def build_needs_input_messages(session_id: str,
                                res: NeedsInput) -> list[OutMessage]:
     msgs: list[OutMessage] = []
     for prompt in res.pending:
-        if prompt.kind == "grams":
-            msgs.append(OutMessage(
-                f"How many grams of '{prompt.parsed.name}'? Send a number."))
-        elif prompt.kind == "food":
+        name = prompt.parsed.name
+        if prompt.kind == "food":
             if prompt.candidates:
-                msgs.append(OutMessage(
-                    f"Pick a food for '{prompt.parsed.name}':",
-                    food_keyboard(session_id, prompt)))
+                msgs.append(OutMessage(f"Pick a food for '{name}':",
+                                       food_keyboard(session_id, prompt)))
             else:
                 msgs.append(OutMessage(
-                    f"Nothing found for '{prompt.parsed.name}'. "
-                    f"Try a different name."))
+                    f"Nothing found for '{name}'. Try a different name."))
         elif prompt.kind == "serving":
+            msgs.append(OutMessage(f"Pick a serving for '{name}':",
+                                   serving_keyboard(session_id, prompt)))
+        elif prompt.kind == "quantity":
+            in_unit = f" in {prompt.unit}" if prompt.unit else ""
             msgs.append(OutMessage(
-                f"'{prompt.parsed.name}' has no gram-based serving. "
-                f"Pick a serving:", serving_keyboard(session_id, prompt)))
+                f"How much '{name}'? Send a number{in_unit}."))
     return msgs
 
 
@@ -100,10 +99,8 @@ class TelegramBot:
     def __init__(self, config, service):
         self.config = config
         self.service = service
-        # chat_id -> what text input we're waiting for next
+        # chat_id -> ("quantity", session_id, index): a numeric reply we're awaiting
         self._awaiting: dict[int, tuple] = {}
-        # session_id -> {index -> PendingPrompt}, to fetch servings in a callback
-        self._prompts: dict[str, dict[int, PendingPrompt]] = {}
         # session_id -> {index -> kind} — which prompts were already shown (dedup)
         self._sent: dict[str, dict[int, str]] = {}
 
@@ -128,7 +125,6 @@ class TelegramBot:
             if awaiting is not None:
                 await self._handle_awaited_number(update, chat_id, awaiting, text)
                 return
-
             res = await asyncio.to_thread(self.service.process_text, text)
             await self._render(update.message.reply_text, res, chat_id)
         except Exception:
@@ -142,17 +138,9 @@ class TelegramBot:
             await update.message.reply_text("I need a number. Try again.")
             return
         self._awaiting.pop(chat_id, None)
-        kind = awaiting[0]
-        if kind == "item_grams":
-            _, sid, idx = awaiting
-            await asyncio.to_thread(self.service.set_grams, sid, idx, number)
-            await self._finalize_and_render(update.message.reply_text, sid, chat_id)
-        elif kind == "serving_grams":
-            _, sid, idx, serving_id = awaiting
-            serving = self._find_serving(sid, idx, serving_id)
-            await asyncio.to_thread(
-                self.service.choose_serving, sid, idx, serving, number)
-            await self._finalize_and_render(update.message.reply_text, sid, chat_id)
+        _, sid, idx = awaiting
+        await asyncio.to_thread(self.service.set_quantity, sid, idx, number)
+        await self._finalize_and_render(update.message.reply_text, sid, chat_id)
 
     # --- button callbacks ---
     async def on_callback(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
@@ -171,13 +159,12 @@ class TelegramBot:
             if action == "food":
                 await asyncio.to_thread(self.service.choose_food, sid, idx, payload)
                 await query.edit_message_text("Got it.")
-                await self._finalize_and_render(
-                    query.message.reply_text, sid, chat_id)
+                await self._finalize_and_render(query.message.reply_text, sid, chat_id)
                 return
             if action == "serv":
-                self._awaiting[chat_id] = ("serving_grams", sid, idx, payload)
-                await query.edit_message_text(
-                    "How many grams in one such serving? Send a number.")
+                await asyncio.to_thread(self.service.choose_serving, sid, idx, payload)
+                await query.edit_message_text("Got it.")
+                await self._finalize_and_render(query.message.reply_text, sid, chat_id)
                 return
         except Exception:
             logger.exception("Error handling callback")
@@ -192,37 +179,25 @@ class TelegramBot:
             await self._send_needs_input(reply, res, chat_id)
 
     async def _send_needs_input(self, reply, res: NeedsInput, chat_id):
-        prompts = self._prompts.setdefault(res.session_id, {})
         sent = self._sent.setdefault(res.session_id, {})
-        grams_await = None
+        quantity_await = None
         for prompt, msg in zip(
                 res.pending, build_needs_input_messages(res.session_id, res)):
-            prompts[prompt.index] = prompt
-            if grams_await is None and prompt.kind == "grams":
-                grams_await = prompt.index
+            if quantity_await is None and prompt.kind == "quantity":
+                quantity_await = prompt.index
             # Already shown this prompt in this form — don't duplicate the message.
             if sent.get(prompt.index) == prompt.kind:
                 continue
             await reply(msg.text, reply_markup=msg.keyboard)
             sent[prompt.index] = prompt.kind
-        # Await a numeric reply for the first still-open grams prompt.
-        if grams_await is not None:
-            self._awaiting[chat_id] = ("item_grams", res.session_id, grams_await)
+        # Await a numeric reply for the first still-open quantity prompt.
+        if quantity_await is not None:
+            self._awaiting[chat_id] = ("quantity", res.session_id, quantity_await)
 
     async def _finalize_and_render(self, reply, session_id, chat_id):
         res = await asyncio.to_thread(self.service.finalize, session_id)
         if isinstance(res, AutoLogged):
-            # Session closed — clear state and show the summary.
             self._sent.pop(session_id, None)
-            self._prompts.pop(session_id, None)
             await self._render(reply, res, chat_id)
         else:
-            # Still-open items remain — send only the new prompts.
             await self._send_needs_input(reply, res, chat_id)
-
-    def _find_serving(self, session_id, index, serving_id):
-        prompt = self._prompts.get(session_id, {}).get(index)
-        if prompt is None:
-            return None
-        return next((s for s in prompt.servings if s.serving_id == serving_id),
-                    None)

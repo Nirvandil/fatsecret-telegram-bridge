@@ -19,15 +19,19 @@ class Store:
         self._migrate()
 
     def _migrate(self) -> None:
+        # Pre-units schema stored a fixed serving per alias; the serving is now
+        # chosen per message, so drop the legacy table (aliases are rebuilt by use).
+        cols = [r["name"]
+                for r in self.conn.execute("PRAGMA table_info(aliases)").fetchall()]
+        if cols and "grams_per_serving" in cols:
+            self.conn.execute("DROP TABLE aliases")
         self.conn.executescript(
             """
             CREATE TABLE IF NOT EXISTS aliases (
-                alias             TEXT PRIMARY KEY,
-                food_id           TEXT NOT NULL,
-                serving_id        TEXT NOT NULL,
-                grams_per_serving REAL NOT NULL,
-                food_name         TEXT NOT NULL,
-                created_at        TEXT NOT NULL
+                alias      TEXT PRIMARY KEY,
+                food_id    TEXT NOT NULL,
+                food_name  TEXT NOT NULL,
+                created_at TEXT NOT NULL
             );
             CREATE TABLE IF NOT EXISTS log (
                 id        INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -42,31 +46,23 @@ class Store:
     def get_alias(self, alias: str) -> Optional[AliasRecord]:
         with self._lock:
             row = self.conn.execute(
-                "SELECT alias, food_id, serving_id, grams_per_serving, food_name "
-                "FROM aliases WHERE alias = ?",
+                "SELECT alias, food_id, food_name FROM aliases WHERE alias = ?",
                 (alias,),
             ).fetchone()
         if row is None:
             return None
-        return AliasRecord(
-            alias=row["alias"], food_id=row["food_id"],
-            serving_id=row["serving_id"],
-            grams_per_serving=row["grams_per_serving"],
-            food_name=row["food_name"],
-        )
+        return AliasRecord(alias=row["alias"], food_id=row["food_id"],
+                           food_name=row["food_name"])
 
     def save_alias(self, rec: AliasRecord) -> None:
         with self._lock:
             self.conn.execute(
-                "INSERT INTO aliases "
-                "(alias, food_id, serving_id, grams_per_serving, food_name, created_at) "
-                "VALUES (?, ?, ?, ?, ?, ?) "
+                "INSERT INTO aliases (alias, food_id, food_name, created_at) "
+                "VALUES (?, ?, ?, ?) "
                 "ON CONFLICT(alias) DO UPDATE SET "
-                "food_id=excluded.food_id, serving_id=excluded.serving_id, "
-                "grams_per_serving=excluded.grams_per_serving, "
-                "food_name=excluded.food_name",
-                (rec.alias, rec.food_id, rec.serving_id, rec.grams_per_serving,
-                 rec.food_name, datetime.now(timezone.utc).isoformat()),
+                "food_id=excluded.food_id, food_name=excluded.food_name",
+                (rec.alias, rec.food_id, rec.food_name,
+                 datetime.now(timezone.utc).isoformat()),
             )
             self.conn.commit()
 

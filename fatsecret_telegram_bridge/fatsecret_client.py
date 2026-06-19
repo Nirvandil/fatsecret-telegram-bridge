@@ -1,6 +1,8 @@
 import logging
+from typing import Optional
 
 from fatsecret_telegram_bridge.models import FoodCandidate, Serving
+from fatsecret_telegram_bridge.units import normalize_unit
 
 logger = logging.getLogger(__name__)
 
@@ -11,20 +13,35 @@ class FatSecretClient:
     Normalizes the library's typed pydantic models (`Food`, `Serving`,
     `FoodEntry`) into our domain models. The library handles OAuth 1.0a
     (HMAC-SHA1) signing, retries, and FatSecret error parsing.
+
+    `region`/`language` are passed to search/get for localized food databases
+    (a FatSecret Premier feature; ignored by the free US/English tier).
     """
 
     def __init__(self, consumer_key: str, consumer_secret: str,
-                 access_token: str, access_secret: str):
+                 access_token: str, access_secret: str,
+                 region: Optional[str] = None, language: Optional[str] = None):
         from fatsecret import Fatsecret
         self._fs = Fatsecret(
             consumer_key, consumer_secret,
             session_token=(access_token, access_secret),
         )
+        self._region = region or None
+        self._language = language or None
+
+    def _loc(self) -> dict:
+        loc = {}
+        if self._region:
+            loc["region"] = self._region
+        if self._language:
+            loc["language"] = self._language
+        return loc
 
     def search_foods(self, query: str, max_results: int = 5) -> list[FoodCandidate]:
-        logger.info("FatSecret foods.search %r (max=%s)", query, max_results)
+        logger.info("FatSecret foods.search %r (max=%s, loc=%s)",
+                    query, max_results, self._loc() or "US")
         foods = self._fs.foods.search_v1(
-            search_expression=query, max_results=max_results)
+            search_expression=query, max_results=max_results, **self._loc())
         out = []
         for f in (foods or []):
             # When there are no matches FatSecret returns a single "empty"
@@ -41,30 +58,19 @@ class FatSecretClient:
 
     def get_servings(self, food_id: str) -> list[Serving]:
         logger.info("FatSecret food.get %s", food_id)
-        food = self._fs.foods.get_v2(food_id)
+        food = self._fs.foods.get_v2(food_id, **self._loc())
         if food is None or food.servings is None:
             logger.info("  -> no servings")
             return []
         out: list[Serving] = []
         for s in (food.servings.serving or []):
-            unit = s.metric_serving_unit
-            amount = s.metric_serving_amount
-            # number_of_units — how many base units are in this serving (for a
-            # "100 g" serving it's 100). Grams per ONE loggable unit =
-            # amount / number_of_units.
-            nunits = float(s.number_of_units) if s.number_of_units else 1.0
-            grams = (float(amount) / nunits
-                     if unit == "g" and amount is not None and nunits else None)
             out.append(Serving(
                 serving_id=str(s.serving_id),
                 description=s.serving_description or "",
-                grams=grams,
-                metric_unit=unit,
-                is_gram=(s.measurement_description == "g"),
+                measurement=normalize_unit(s.measurement_description),
             ))
-        logger.info("  -> %s servings (%s in grams, gram-serving: %s)",
-                    len(out), sum(1 for s in out if s.grams),
-                    any(s.is_gram for s in out))
+        logger.info("  -> %s servings (units: %s)",
+                    len(out), sorted({s.measurement for s in out if s.measurement}))
         return out
 
     def create_entry(self, food_id: str, food_name: str, serving_id: str,

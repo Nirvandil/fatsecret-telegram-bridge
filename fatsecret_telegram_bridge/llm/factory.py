@@ -1,10 +1,14 @@
+from typing import Optional
+
 from fatsecret_telegram_bridge.llm.base import LLMProvider
 from fatsecret_telegram_bridge.llm.anthropic_provider import AnthropicProvider
 from fatsecret_telegram_bridge.llm.openai_provider import OpenAIProvider
 
 
-def build_provider(config) -> LLMProvider:
+def build_provider(config) -> Optional[LLMProvider]:
     provider = config.llm_provider.lower()
+    if provider == "none":
+        return None      # no LLM — the service falls back to the regex parser
     if provider == "anthropic":
         import anthropic
         client = anthropic.Anthropic(api_key=config.llm_api_key)

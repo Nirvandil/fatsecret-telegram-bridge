@@ -29,12 +29,19 @@ def main() -> None:
     load_dotenv()
     config = load_config()
     _setup_logging(config.log_level)
-    logger.info("LLM provider: %s (%s)", config.llm_provider, config.llm_model)
+    if config.llm_provider == "none":
+        logger.info("LLM: disabled (regex parser, no translation)")
+    else:
+        logger.info("LLM provider: %s (%s)", config.llm_provider, config.llm_model)
+    if config.fatsecret_region or config.fatsecret_language:
+        logger.info("FatSecret locale: region=%s language=%s",
+                    config.fatsecret_region, config.fatsecret_language)
 
     provider = build_provider(config)
     client = FatSecretClient(
         config.fatsecret_consumer_key, config.fatsecret_consumer_secret,
         config.fatsecret_access_token, config.fatsecret_access_secret,
+        region=config.fatsecret_region, language=config.fatsecret_language,
     )
     store = Store(config.db_path)
     service = LoggerService(

@@ -32,6 +32,30 @@ def test_defaults_applied():
     assert cfg.log_level == "INFO"
     assert cfg.poll_interval == 0.0
     assert cfg.poll_timeout == 10
+    assert cfg.fatsecret_region is None and cfg.fatsecret_language is None
+
+
+def test_region_language_loaded():
+    env = base_env()
+    env["FATSECRET_REGION"] = "DE"
+    env["FATSECRET_LANGUAGE"] = "de"
+    cfg = load_config(env)
+    assert cfg.fatsecret_region == "DE" and cfg.fatsecret_language == "de"
+
+
+def test_llm_none_does_not_require_key():
+    env = base_env()
+    del env["LLM_API_KEY"]
+    env["LLM_PROVIDER"] = "none"
+    cfg = load_config(env)
+    assert cfg.llm_provider == "none" and cfg.llm_api_key == ""
+
+
+def test_missing_llm_key_raises_when_provider_set():
+    env = base_env()
+    del env["LLM_API_KEY"]
+    with pytest.raises(ValueError, match="LLM_API_KEY"):
+        load_config(env)
 
 
 def test_missing_required_raises():
